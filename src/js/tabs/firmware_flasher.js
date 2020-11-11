@@ -1,8 +1,10 @@
 'use strict';
 
+//App.clearCache();
+
 TABS.firmware_flasher = {
     releases: null,
-    releaseChecker: new ReleaseChecker('firmware', 'https://api.github.com/repos/betaflight/betaflight/releases'),
+    releaseChecker: new ReleaseChecker('firmware', 'https://api.github.com/repos/derdanu/betaflight-akramode/releases'),
     jenkinsLoader: new JenkinsLoader('https://ci.betaflight.tech'),
     gitHubApi: new GitHubApi(),
     localFirmwareLoaded: false,

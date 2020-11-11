@@ -3,7 +3,7 @@
 var ReleaseChecker = function (releaseName, releaseUrl) {
     var self = this;
     
-    self._releaseName = releaseName;
+    self._releaseName = releaseName + '-akramode';
     self._releaseDataTag = `${self._releaseName}ReleaseData`;
     self._releaseLastUpdateTag = `${self._releaseName}ReleaseLastUpdate`
     self._releaseUrl = releaseUrl;

@@ -36,7 +36,7 @@ let FirmwareCache = (function () {
         onRemoveFromCacheCallback;
 
     let JournalStorage = (function () {
-        let CACHEKEY = "firmware-cache-journal";
+        let CACHEKEY = "firmware-cache-journal-akramode";
 
         /**
          * @param {Array} data LRU key-value pairs
