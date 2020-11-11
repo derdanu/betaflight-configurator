@@ -817,6 +817,9 @@ function listReleaseTasks(appDirectory) {
         releaseTasks.push(function release_win32(done) {
             return release_win('win32', appDirectory, done);
         });
+        releaseTasks.push(function release_win32_zip(done) {
+            return release_zip('win32', appDirectory, done);
+        });        
     }
 
     if (platforms.indexOf('win64') !== -1) {
