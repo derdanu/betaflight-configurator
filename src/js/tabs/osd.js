@@ -1452,6 +1452,7 @@ OSD.constants = {
         { file: "impact", name: "Impact" },
         { file: "impact_mini", name: "Impact Mini" },
         { file: "Fab_V5", name: "FabSche V5" },
+        { file: "Comic_Sans", name: "Comic Sans" },
     ],
 };
 
