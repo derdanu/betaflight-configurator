@@ -17,6 +17,7 @@ variables:
   repoName: betaflight-configurator
   debugReleaseNotes: This is a akramode build off the tip of 'master' with special sauce. It may be unstable and result in corrupted configurations or data loss. **Use only for testing.**
   releaseNotes: This is a release build. It does not contain the debug console.
+  version: 0.$(Build.BuildNumber)
 
 parameters:
   - name: releaseBuild
@@ -40,6 +41,11 @@ stages:
       vmImage: 'vs2017-win2016'
 
     steps:
+    - task: FileTransform@1
+      inputs:
+        folderPath: '$(System.DefaultWorkingDirectory)/'
+        fileType: 'json'
+        targetFiles: '**/package.json'
     - task: UseNode@1
       inputs:
         version: '10.16.3'
@@ -72,6 +78,11 @@ stages:
       vmImage: 'vs2017-win2016'
 
     steps:
+    - task: FileTransform@1
+      inputs:
+        folderPath: '$(System.DefaultWorkingDirectory)/'
+        fileType: 'json'
+        targetFiles: '**/package.json'    
     - task: UseNode@1
       inputs:
         version: '10.16.3'
@@ -91,6 +102,11 @@ stages:
       vmImage: 'macos-10.15'
 
     steps:
+    - task: FileTransform@1
+      inputs:
+        folderPath: '$(System.DefaultWorkingDirectory)/'
+        fileType: 'json'
+        targetFiles: '**/package.json'
     - task: UseNode@1
       inputs:
         version: '10.16.3'
@@ -116,6 +132,11 @@ stages:
       vmImage: 'ubuntu-16.04'
 
     steps:
+    - task: FileTransform@1
+      inputs:
+        folderPath: '$(System.DefaultWorkingDirectory)/'
+        fileType: 'json'
+        targetFiles: '**/package.json'
     - task: UseNode@1
       inputs:
         version: '10.16.3'
@@ -155,9 +176,11 @@ stages:
         manuallySetRepository: true
         githubOwner: '$(owner)'
         githubRepositoryName: '$(repoName)'
-        githubReleaseNotes: |+
+        githubTag: '0.$(Build.BuildNumber)'
+        githubReleaseTitle: '0.$(Build.BuildNumber)'
+        githubReleaseNotes: |
           $(releaseNotes)
-
+          
           $(changelog)
         githubReleaseDraft: false
         githubReleasePrerelease: false
@@ -172,3 +195,4 @@ stages:
         githubSkipDuplicatedAssets: false
         githubEditRelease: false
         githubDeleteEmptyTag: false
+
