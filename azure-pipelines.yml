@@ -175,9 +175,9 @@ stages:
         githubEndpoint: '$(endpoint)'
         manuallySetRepository: true
         githubOwner: '$(owner)'
-        githubRepositoryName: '0.$(repoName)'
+        githubRepositoryName: '$(repoName)'
         githubTag: '0.$(Build.BuildNumber)'
-        githubReleaseTitle: '$(Build.BuildNumber)'
+        githubReleaseTitle: '0.$(Build.BuildNumber)'
         githubReleaseNotes: |
           $(releaseNotes)
           
