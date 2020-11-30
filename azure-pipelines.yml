@@ -17,7 +17,7 @@ variables:
   repoName: betaflight-configurator
   debugReleaseNotes: This is a nightly build off the tip of 'master'. It may be unstable and result in corrupted configurations or data loss. **Use only for testing.**
   releaseNotes: This is a release build. It does not contain the debug console.
-  version: $(Build.BuildNumber)
+  version: 0.$(Build.BuildNumber)
 
 parameters:
   - name: releaseBuild
@@ -78,6 +78,11 @@ stages:
       vmImage: 'vs2017-win2016'
 
     steps:
+    - task: FileTransform@1
+      inputs:
+        folderPath: '$(System.DefaultWorkingDirectory)/'
+        fileType: 'json'
+        targetFiles: '**/package.json'    
     - task: UseNode@1
       inputs:
         version: '10.16.3'
@@ -97,6 +102,11 @@ stages:
       vmImage: 'macos-10.15'
 
     steps:
+    - task: FileTransform@1
+      inputs:
+        folderPath: '$(System.DefaultWorkingDirectory)/'
+        fileType: 'json'
+        targetFiles: '**/package.json'
     - task: UseNode@1
       inputs:
         version: '10.16.3'
@@ -122,6 +132,11 @@ stages:
       vmImage: 'ubuntu-16.04'
 
     steps:
+    - task: FileTransform@1
+      inputs:
+        folderPath: '$(System.DefaultWorkingDirectory)/'
+        fileType: 'json'
+        targetFiles: '**/package.json'
     - task: UseNode@1
       inputs:
         version: '10.16.3'
@@ -160,8 +175,8 @@ stages:
         githubEndpoint: '$(endpoint)'
         manuallySetRepository: true
         githubOwner: '$(owner)'
-        githubRepositoryName: '$(repoName)'
-        githubTag: '$(Build.BuildNumber)'
+        githubRepositoryName: '0.$(repoName)'
+        githubTag: '0.$(Build.BuildNumber)'
         githubReleaseTitle: '$(Build.BuildNumber)'
         githubReleaseNotes: |
           $(releaseNotes)
