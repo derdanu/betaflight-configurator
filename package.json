@@ -24,7 +24,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "github.com/betaflight/betaflight-configurator"
+    "url": "github.com/derdanu/betaflight-configurator"
   },
   "webview": {
     "partitions": [
