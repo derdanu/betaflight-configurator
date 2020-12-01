@@ -17,7 +17,7 @@
 #define InstallerFileName "betaflight-configurator-installer_" + version + "_" + archName
 #define SourcePath "..\..\" + sourceFolder + "\betaflight-configurator\" + archName
 #define TargetFolderName "Betaflight-Configurator"
-#define UpdatesUrl "https://github.com/betaflight/betaflight-configurator/releases"
+#define UpdatesUrl "https://github.com/derdanu/betaflight-configurator/releases"
 
 [CustomMessages]
 AppName=betaflight-configurator
