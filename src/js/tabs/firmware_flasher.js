@@ -1023,10 +1023,14 @@ TABS.firmware_flasher.initialize = function (callback) {
         });
 
         portPickerElement.change(function () {
-            if ($('option:selected', this).data().isDFU) {
-                exitDfuElement.removeClass('disabled');
-            } else {
-                exitDfuElement.addClass('disabled');
+            if (!GUI.connect_lock) {
+                if ($('option:selected', this).data().isDFU) {
+                    exitDfuElement.removeClass('disabled');
+                } else {
+                    $("a.load_remote_file").removeClass('disabled');
+                    $("a.load_file").removeClass('disabled');
+                    exitDfuElement.addClass('disabled');
+                }
             }
         }).change();
 
@@ -1098,6 +1102,8 @@ TABS.firmware_flasher.initialize = function (callback) {
 
         function startFlashing() {
             exitDfuElement.addClass('disabled');
+            $("a.load_remote_file").addClass('disabled');
+            $("a.load_file").addClass('disabled');
             if (!GUI.connect_lock) { // button disabled while flashing is in progress
                 if (self.parsed_hex) {
                     try {
