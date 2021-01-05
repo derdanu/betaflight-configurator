@@ -872,9 +872,7 @@ TABS.firmware_flasher.initialize = function (callback) {
                     }
                 ]
             }, function (fileEntry) {
-                if (chrome.runtime.lastError) {
-                    console.error(chrome.runtime.lastError.message);
-
+                if (checkChromeRuntimeError()) {
                     return;
                 }
 
@@ -1133,8 +1131,7 @@ TABS.firmware_flasher.initialize = function (callback) {
         $('span.progressLabel a.save_firmware').click(function () {
             var summary = $('select[name="firmware_version"] option:selected').data('summary');
             chrome.fileSystem.chooseEntry({type: 'saveFile', suggestedName: summary.file, accepts: [{description: 'HEX files', extensions: ['hex']}]}, function (fileEntry) {
-                if (chrome.runtime.lastError) {
-                    console.error(chrome.runtime.lastError.message);
+                if (checkChromeRuntimeError()) {
                     return;
                 }
 
