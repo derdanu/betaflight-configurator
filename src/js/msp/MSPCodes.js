@@ -117,6 +117,9 @@ const MSPCodes = {
 
     MSP_MOTOR_TELEMETRY:            139,
 
+    MSP_TUNING_SLIDERS:             140,
+    MSP_SET_TUNING_SLIDERS:         141,
+
     MSP_STATUS_EX:                  150,
 
     MSP_UID:                        160,
@@ -182,4 +185,5 @@ const MSPCodes = {
     MSP2_MOTOR_OUTPUT_REORDERING:   0x3001,
     MSP2_SET_MOTOR_OUTPUT_REORDERING:    0x3002,
     MSP2_SEND_DSHOT_COMMAND:        0x3003,
+    MSP2_GET_VTX_DEVICE_STATUS:     0x3004,
 };
