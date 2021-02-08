@@ -5,6 +5,7 @@
 TABS.firmware_flasher = {
     releases: null,
     releaseChecker: new ReleaseChecker('firmware', 'https://api.github.com/repos/derdanu/betaflight-akramode/releases'),
+    nightlyChecker: new ReleaseChecker('nightly', 'https://api.github.com/repos/derdanu/betaflight-akramode-nightly/releases'),
     jenkinsLoader: new JenkinsLoader('https://ci.betaflight.tech'),
     gitHubApi: new GitHubApi(),
     localFirmwareLoaded: false,
@@ -224,6 +225,59 @@ TABS.firmware_flasher.initialize = function (callback) {
             loadUnifiedBuilds(releases);
         };
 
+        function processBoardOptionsNightly(releaseData, showDevReleases) {
+            var releases = {};
+            var sortedTargets = [];
+            var unsortedTargets = [];
+            releaseData.forEach(function(release) {
+                release.assets.forEach(function(asset) {
+                    var targetFromFilenameExpression = /betaflight_([\d.]+)?_?(\w+)(\-.*)?\.(.*)/;
+                    var match = targetFromFilenameExpression.exec(asset.name);
+                    if ((!showDevReleases && release.prerelease) || !match) {
+                        return;
+                    }
+                    var target = match[2];
+                    if($.inArray(target, unsortedTargets) == -1) {
+                        unsortedTargets.push(target);
+                    }
+                });
+                sortedTargets = unsortedTargets.sort();
+            });
+            sortedTargets.forEach(function(release) {
+                releases[release] = [];
+            });
+            releaseData.forEach(function(release) {
+                release.assets.forEach(function(asset) {
+                    var targetFromFilenameExpression = /betaflight_([\d.]+)?_?(\w+)(\-.*)?\.(.*)/;
+                    var match = targetFromFilenameExpression.exec(asset.name);
+                    if ((!showDevReleases && release.prerelease) || !match) {
+                        return;
+                    }
+                    var version = match[1];
+                    var target = match[2];
+                    var format = match[4];
+                    if (format != 'hex') {
+                        return;
+                    }
+                    var date = new Date(release.published_at);
+                    var formattedDate = ("0" + date.getDate()).slice(-2) + "-" + ("0" + (date.getMonth() + 1)).slice(-2) + "-" + date.getFullYear() + " " + ("0" + date.getHours()).slice(-2) + ":" + ("0" + date.getMinutes()).slice(-2);
+                    var descriptor = {
+                        "releaseUrl": release.html_url,
+                        "name"      : version,
+                        "version"   : version,
+                        "url"       : asset.browser_download_url,
+                        "file"      : asset.name,
+                        "target"    : target,
+                        "date"      : formattedDate,
+                        "notes"     : release.body
+                    };
+                    releases[target].push(descriptor);
+                });
+            });
+            loadUnifiedBuilds(releases);
+        };
+
+
         function supportsUnifiedTargets(version) {
             return semver.gte(version.split(' ')[0], '4.1.0-RC1');
         }
@@ -340,7 +394,7 @@ TABS.firmware_flasher.initialize = function (callback) {
             if (job.title === "Development") {
                 return {
                     tag: "firmwareFlasherOptionLabelBuildTypeDevelopment",
-                    loader: () => self.jenkinsLoader.loadBuilds(job.name, loadUnifiedBuilds)
+                    loader: () => self.nightlyChecker.loadReleaseData(releaseData => processBoardOptionsNightly(releaseData, true))
                 };
             }
             return {
