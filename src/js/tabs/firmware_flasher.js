@@ -255,6 +255,7 @@ TABS.firmware_flasher.initialize = function (callback) {
                     }
                     var version = match[1];
                     var target = match[2];
+                    var builddate = match[3];
                     var format = match[4];
                     if (format != 'hex') {
                         return;
@@ -263,8 +264,8 @@ TABS.firmware_flasher.initialize = function (callback) {
                     var formattedDate = ("0" + date.getDate()).slice(-2) + "-" + ("0" + (date.getMonth() + 1)).slice(-2) + "-" + date.getFullYear() + " " + ("0" + date.getHours()).slice(-2) + ":" + ("0" + date.getMinutes()).slice(-2);
                     var descriptor = {
                         "releaseUrl": release.html_url,
-                        "name"      : version,
-                        "version"   : version,
+                        "name"      : version + " #" + builddate,
+                        "version"   : version + " #" + builddate,
                         "url"       : asset.browser_download_url,
                         "file"      : asset.name,
                         "target"    : target,
