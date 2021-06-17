@@ -828,6 +828,9 @@ function listReleaseTasks(appDirectory) {
         releaseTasks.push(function release_win64(done) {
             return release_win('win64', appDirectory, done);
         });
+        releaseTasks.push(function release_win32_zip(done) {
+            return release_zip('win64', appDirectory, done);
+        });        
     }
 
     if (platforms.indexOf('android') !== -1) {
