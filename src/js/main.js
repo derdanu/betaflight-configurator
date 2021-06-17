@@ -1,7 +1,4 @@
-'use strict';
-
-window.googleAnalytics = analytics;
-window.analytics = null;
+import { i18n } from './localization';
 
 $(document).ready(function () {
 
@@ -170,7 +167,6 @@ function startProcess() {
 
     GUI.log(i18n.getMessage('infoVersions', {
         operatingSystem: GUI.operating_system,
-        chromeVersion: window.navigator.appVersion.replace(/.*Chrome\/([0-9.]*).*/, "$1"),
         configuratorVersion: CONFIGURATOR.version }));
 
     if (GUI.isNWJS()) {
@@ -182,6 +178,13 @@ function startProcess() {
             GUI.nwGui.Shell.openExternal(url);
         });
         nwWindow.on('close', closeHandler);
+        // TODO: Remove visibilitychange Listener when upgrading to NW2
+        // capture Command H on MacOS and change it to minimize
+        document.addEventListener("visibilitychange", function() {
+            if (GUI.operating_system === "MacOS" && document.visibilityState === "hidden") {
+                nwWindow.minimize();
+            }
+        }, false);
     } else if (GUI.isCordova()) {
         window.addEventListener('beforeunload', closeHandler);
         document.addEventListener('backbutton', function(e) {
@@ -204,7 +207,7 @@ function startProcess() {
     // our view is reactive to model changes
     // updateTopBarVersion();
 
-    if (!GUI.isOther() && GUI.operating_system !== 'ChromeOS') {
+    if (!GUI.isOther()) {
         checkForConfiguratorUpdates();
     }
 
@@ -298,22 +301,32 @@ function startProcess() {
 
                 switch (tab) {
                     case 'landing':
-                        TABS.landing.initialize(content_ready);
+                        import("./tabs/landing").then(({ landing }) =>
+                            landing.initialize(content_ready)
+                        );
                         break;
                     case 'changelog':
-                        TABS.staticTab.initialize('changelog', content_ready);
+                        import("./tabs/static_tab").then(({ staticTab }) =>
+                            staticTab.initialize("changelog", content_ready)
+                        );
                         break;
                     case 'privacy_policy':
-                        TABS.staticTab.initialize('privacy_policy', content_ready);
+                        import("./tabs/static_tab").then(({ staticTab }) =>
+                            staticTab.initialize("privacy_policy", content_ready)
+                        );
                         break;
                     case 'options':
-                        TABS.options.initialize(content_ready);
+                        import("./tabs/options").then(({ options }) =>
+                            options.initialize(content_ready)
+                        );
                         break;
                     case 'firmware_flasher':
-                        TABS.firmware_flasher.initialize(content_ready);
+                        import("./tabs/firmware_flasher").then(({ firmware_flasher }) =>
+                            firmware_flasher.initialize(content_ready)
+                        );
                         break;
                     case 'help':
-                        TABS.help.initialize(content_ready);
+                        import('./tabs/help').then(({ help }) => help.initialize(content_ready));
                         break;
                     case 'auxiliary':
                         TABS.auxiliary.initialize(content_ready);
@@ -545,6 +558,7 @@ function setDarkTheme(enabled) {
     });
 }
 
+
 function checkForConfiguratorUpdates() {
     const releaseChecker = new ReleaseChecker('configurator', 'https://api.github.com/repos/derdanu/betaflight-configurator/releases');
 
@@ -712,3 +726,17 @@ function showDialogDynFiltersChange() {
         });
     }
 }
+
+// TODO: all of these are used as globals in other parts.
+// once moved to modules extract to own module.
+window.showDialogDynFiltersChange = showDialogDynFiltersChange;
+window.googleAnalytics = analytics;
+window.analytics = null;
+window.showErrorDialog = showErrorDialog;
+window.generateFilename = generateFilename;
+window.updateTabList = updateTabList;
+window.isExpertModeEnabled = isExpertModeEnabled;
+window.checkForConfiguratorUpdates = checkForConfiguratorUpdates;
+window.setDarkTheme = setDarkTheme;
+window.appReady = appReady;
+window.checkSetupAnalytics = checkSetupAnalytics;

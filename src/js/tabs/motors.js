@@ -1,38 +1,47 @@
 'use strict';
 
 TABS.motors = {
-        feature3DEnabled: false,
-        escProtocolIsDshot: false,
-        sensor: "gyro",
-        sensorGyroRate: 20,
-        sensorGyroScale: 2000,
-        sensorAccelRate: 20,
-        sensorAccelScale: 2,
-        sensorSelectValues: {
-            "gyroScale": {"10" : 10,
-                          "25" : 25,
-                          "50" : 50,
-                          "100" : 100,
-                          "200" : 200,
-                          "300" : 300,
-                          "400" : 400,
-                          "500" : 500,
-                          "1000" : 1000,
-                          "2000" : 2000},
-            "accelScale": {"0.05" : 0.05,
-                           "0.1" : 0.1,
-                           "0.2" : 0.2,
-                           "0.3" : 0.3,
-                           "0.4" : 0.4,
-                           "0.5" : 0.5,
-                           "1" : 1,
-                           "2" : 2}
+    previousDshotBidir: null,
+    previousFilterDynQ: null,
+    previousFilterDynWidth: null,
+    analyticsChanges: {},
+    configHasChanged: false,
+    configChanges: {},
+    feature3DEnabled: false,
+    sensor: "gyro",
+    sensorGyroRate: 20,
+    sensorGyroScale: 2000,
+    sensorAccelRate: 20,
+    sensorAccelScale: 2,
+    sensorSelectValues: {
+        "gyroScale": {
+            "10" : 10,
+            "25" : 25,
+            "50" : 50,
+            "100" : 100,
+            "200" : 200,
+            "300" : 300,
+            "400" : 400,
+            "500" : 500,
+            "1000" : 1000,
+            "2000" : 2000,
         },
-        // These are translated into proper Dshot values on the flight controller
-        DSHOT_DISARMED_VALUE: 1000,
-        DSHOT_MAX_VALUE: 2000,
-        DSHOT_3D_NEUTRAL: 1500,
-        numberOfValidOutputs: -1,
+        "accelScale": {
+            "0.05" : 0.05,
+            "0.1" : 0.1,
+            "0.2" : 0.2,
+            "0.3" : 0.3,
+            "0.4" : 0.4,
+            "0.5" : 0.5,
+            "1" : 1,
+            "2" : 2,
+        },
+    },
+    // These are translated into proper Dshot values on the flight controller
+    DSHOT_PROTOCOL_MIN_VALUE: 0,
+    DSHOT_DISARMED_VALUE: 1000,
+    DSHOT_MAX_VALUE: 2000,
+    DSHOT_3D_NEUTRAL: 1500,
 };
 
 TABS.motors.initialize = function (callback) {
@@ -40,58 +49,30 @@ TABS.motors.initialize = function (callback) {
 
     self.armed = false;
     self.escProtocolIsDshot = false;
+    self.configHasChanged = false;
+    self.configChanges = {};
+
+    // Update filtering defaults based on API version
+    const FILTER_DEFAULT = FC.getFilterDefaults();
 
     if (GUI.active_tab != 'motors') {
         GUI.active_tab = 'motors';
     }
 
-    function get_arm_status() {
-        MSP.send_message(MSPCodes.MSP_STATUS, false, false, load_feature_config);
-    }
-
-    function load_feature_config() {
-        MSP.send_message(MSPCodes.MSP_FEATURE_CONFIG, false, false, load_motor_3d_config);
-    }
-
-    function load_motor_3d_config() {
-        MSP.send_message(MSPCodes.MSP_MOTOR_3D_CONFIG, false, false, load_esc_protocol);
-    }
-
-    function load_esc_protocol() {
-        MSP.send_message(MSPCodes.MSP_ADVANCED_CONFIG, false, false, load_motor_output_reordering);
-    }
-
-    function load_motor_output_reordering() {
-        MSP.send_message(MSPCodes.MSP2_MOTOR_OUTPUT_REORDERING, false, false, load_motor_data);
-    }
-
-    function load_motor_data() {
-        MSP.send_message(MSPCodes.MSP_MOTOR, false, false, load_motor_telemetry_data);
-    }
-
-    function load_motor_telemetry_data() {
-        if (FC.MOTOR_CONFIG.use_dshot_telemetry || FC.MOTOR_CONFIG.use_esc_sensor) {
-            MSP.send_message(MSPCodes.MSP_MOTOR_TELEMETRY, false, false, load_mixer_config);
-        } else {
-            load_mixer_config();
-        }
-    }
-
-    function load_mixer_config() {
-        MSP.send_message(MSPCodes.MSP_MIXER_CONFIG, false, false, load_html);
-    }
+    MSP.promise(MSPCodes.MSP_STATUS)
+    .then(() => MSP.promise(MSPCodes.MSP_FEATURE_CONFIG))
+    .then(() => MSP.promise(MSPCodes.MSP_MIXER_CONFIG))
+    .then(() => FC.MOTOR_CONFIG.use_dshot_telemetry || FC.MOTOR_CONFIG.use_esc_sensor ? MSP.promise(MSPCodes.MSP_MOTOR_TELEMETRY) : true)
+    .then(() => MSP.promise(MSPCodes.MSP_MOTOR_CONFIG))
+    .then(() => MSP.promise(MSPCodes.MSP_MOTOR_3D_CONFIG))
+    .then(() => MSP.promise(MSPCodes.MSP2_MOTOR_OUTPUT_REORDERING))
+    .then(() => MSP.promise(MSPCodes.MSP_ADVANCED_CONFIG))
+    .then(() => semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_42) ? MSP.promise(MSPCodes.MSP_FILTER_CONFIG) : true)
+    .then(() => semver.gte(FC.CONFIG.apiVersion, "1.8.0") ? MSP.promise(MSPCodes.MSP_ARMING_CONFIG) : true)
+    .then(() => load_html());
 
     function load_html() {
         $('#content').load("./tabs/motors.html", process_html);
-    }
-
-    // Get information from Betaflight
-    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_36)) {
-        // BF 3.2.0+
-        MSP.send_message(MSPCodes.MSP_MOTOR_CONFIG, false, false, get_arm_status);
-    } else {
-        // BF 3.1.x or older
-        MSP.send_message(MSPCodes.MSP_MISC, false, false, get_arm_status);
     }
 
     function update_arm_status() {
@@ -221,7 +202,7 @@ TABS.motors.initialize = function (callback) {
     }
 
     function update_model(mixer) {
-        const imgSrc = CommonUtils.GetMixerImageSrc(mixer, FC.MIXER_CONFIG.reverseMotorDir, FC.CONFIG.apiVersion);
+        const imgSrc = getMixerImageSrc(mixer, FC.MIXER_CONFIG.reverseMotorDir, FC.CONFIG.apiVersion);
         $('.mixerPreview img').attr('src', imgSrc);
 
         const motorOutputReorderConfig = new MotorOutputReorderConfig(100);
@@ -241,17 +222,144 @@ TABS.motors.initialize = function (callback) {
         update_arm_status();
 
         self.feature3DEnabled = FC.FEATURE_CONFIG.features.isEnabled('3D');
+        const motorsEnableTestModeElement = $('#motorsEnableTestMode');
+        self.analyticsChanges = {};
 
-        $('#motorsEnableTestMode').prop('checked', false);
+        motorsEnableTestModeElement.prop('checked', false);
 
         if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_42) || !(FC.MOTOR_CONFIG.use_dshot_telemetry || FC.MOTOR_CONFIG.use_esc_sensor)) {
             $(".motor_testing .telemetry").hide();
         } else {
             // Hide telemetry from unused motors (to hide the tooltip in an empty blank space)
             for (let i = FC.MOTOR_CONFIG.motor_count; i < FC.MOTOR_DATA.length; i++) {
-                $(".motor_testing .telemetry .motor-" + i).hide();
+                $(`.motor_testing .telemetry .motor-${i}`).hide();
             }
         }
+
+        function isInt(n) {
+            return n % 1 === 0;
+        }
+
+        function setContentButtons(motorsTesting=false) {
+            $('.btn .tool').toggleClass("disabled", self.configHasChanged || motorsTesting);
+            $('.btn .save').toggleClass("disabled", !self.configHasChanged);
+        }
+
+        const defaultConfiguration = {
+            mixer:              FC.MIXER_CONFIG.mixer,
+            reverseMotorSwitch: FC.MIXER_CONFIG.reverseMotorDir,
+            escprotocol:        FC.PID_ADVANCED_CONFIG.fast_pwm_protocol + 1,
+            feature3:           FC.FEATURE_CONFIG.features.isEnabled('MOTOR_STOP'),
+            feature9:           FC.FEATURE_CONFIG.features.isEnabled('3D'),
+            feature20:          FC.FEATURE_CONFIG.features.isEnabled('ESC_SENSOR'),
+            dshotBidir:         FC.MOTOR_CONFIG.use_dshot_telemetry,
+            motorPoles:         FC.MOTOR_CONFIG.motor_poles,
+            digitalIdlePercent: FC.PID_ADVANCED_CONFIG.digitalIdlePercent,
+            _3ddeadbandlow:     FC.MOTOR_3D_CONFIG.deadband3d_low,
+            _3ddeadbandhigh:    FC.MOTOR_3D_CONFIG.deadband3d_high,
+            _3dneutral:         FC.MOTOR_3D_CONFIG.neutral,
+            unsyncedPWMSwitch:  FC.PID_ADVANCED_CONFIG.use_unsyncedPwm,
+            unsyncedpwmfreq:    FC.PID_ADVANCED_CONFIG.motor_pwm_rate,
+            minthrottle:        FC.MOTOR_CONFIG.minthrottle,
+            maxthrottle:        FC.MOTOR_CONFIG.maxthrottle,
+            mincommand:         FC.MOTOR_CONFIG.mincommand,
+        };
+
+        setContentButtons();
+
+        // Stop motor testing on configuration changes
+        function disableHandler(e) {
+            if (e.target !== e.currentTarget) {
+                const item = e.target.id === '' ? e.target.name : e.target.id;
+                let value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+
+                switch (e.target.type) {
+                    case "checkbox":
+                        if (item === "reverseMotorSwitch") {
+                            value = value === false ? 0 : 1;
+                        }
+                        break;
+                    case "number":
+                        value = isInt(value) ? parseInt(value) : parseFloat(value);
+                        break;
+                    case "select-one":
+                        value = parseInt(value);
+                        break;
+                    default:
+                        console.log(`Undefined case ${e.target.type} encountered, please check code`);
+                }
+
+                self.configChanges[item] = value;
+
+                if (item in defaultConfiguration) {
+                    if (value !== defaultConfiguration[item]) {
+                        self.configHasChanged = true;
+                    } else {
+                        delete self.configChanges[item];
+                        if (Object.keys(self.configChanges).length === 0) {
+                            console.log('All configuration changes reverted');
+                            self.configHasChanged = false;
+                          }
+                    }
+                } else {
+                    console.log(`Unknown item ${item} found with type ${e.target.type}, please add to the defaultConfiguration object.`);
+                    self.configHasChanged = true;
+                }
+
+                // disables Motor Testing if settings are being changed (must save and reboot or undo changes).
+                motorsEnableTestModeElement.trigger("change");
+                setContentButtons();
+            }
+            e.stopPropagation();
+        }
+
+        // Add EventListener for configuration changes
+        document.querySelectorAll('.configuration').forEach(elem => elem.addEventListener('change', disableHandler));
+
+        /*
+        *  MIXER
+        */
+
+        const mixerListElement = $('select.mixerList');
+        for (let selectIndex = 0; selectIndex < mixerList.length; selectIndex++) {
+            mixerList.forEach(function (mixerEntry, mixerIndex) {
+                if (mixerEntry.pos === selectIndex) {
+                    mixerListElement.append(`<option value="${(mixerIndex + 1)}">${mixerEntry.name}</option>`);
+                }
+            });
+        }
+
+        function refreshMixerPreview() {
+            const mixer = FC.MIXER_CONFIG.mixer;
+            const reverse = FC.MIXER_CONFIG.reverseMotorDir ? "_reversed" : "";
+
+            $('.mixerPreview img').attr('src', `./resources/motor_order/${mixerList[mixer - 1].image}${reverse}.svg`);
+        }
+
+        const reverseMotorSwitchElement = $('#reverseMotorSwitch');
+
+        reverseMotorSwitchElement.change(function() {
+            FC.MIXER_CONFIG.reverseMotorDir = $(this).prop('checked') ? 1 : 0;
+            refreshMixerPreview();
+        });
+
+        reverseMotorSwitchElement.prop('checked', FC.MIXER_CONFIG.reverseMotorDir !== 0).change();
+
+        mixerListElement.change(function () {
+            const mixerValue = parseInt($(this).val());
+
+            let newValue;
+            if (mixerValue !== FC.MIXER_CONFIG.mixer) {
+                newValue = $(this).find('option:selected').text();
+            }
+            self.analyticsChanges['Mixer'] = newValue;
+
+            FC.MIXER_CONFIG.mixer = mixerValue;
+            refreshMixerPreview();
+        });
+
+        // select current mixer configuration
+        mixerListElement.val(FC.MIXER_CONFIG.mixer).change();
 
         update_model(FC.MIXER_CONFIG.mixer);
 
@@ -272,15 +380,15 @@ TABS.motors.initialize = function (callback) {
         let accelOffsetEstablished = false;
 
         // cached elements
-        const motorVoltage = $('.motors-bat-voltage'),
-            motor_mah_drawing_e = $('.motors-bat-mah-drawing'),
-            motor_mah_drawn_e = $('.motors-bat-mah-drawn');
+        const motorVoltage = $('.motors-bat-voltage');
+        const motorMahDrawingElement = $('.motors-bat-mah-drawing');
+        const motorMahDrawnElement = $('.motors-bat-mah-drawn');
 
         const rawDataTextElements = {
-                x: [],
-                y: [],
-                z: [],
-                rms: []
+            x: [],
+            y: [],
+            z: [],
+            rms: []
         };
 
         $('.plot_control .x, .plot_control .y, .plot_control .z, .plot_control .rms').each(function () {
@@ -311,7 +419,7 @@ TABS.motors.initialize = function (callback) {
         }
 
         $('.tab-motors .sensor select').change(function(){
-            TABS.motors.sensor = $('.tab-motors select[name="sensor_choice"]').val()
+            TABS.motors.sensor = $('.tab-motors select[name="sensor_choice"]').val();
             ConfigStorage.set({'motors_tab_sensor_settings': {'sensor': TABS.motors.sensor}});
 
             switch(TABS.motors.sensor){
@@ -373,7 +481,7 @@ TABS.motors.initialize = function (callback) {
                     accelOffset[0] + FC.SENSOR_DATA.accelerometer[0],
                     accelOffset[1] + FC.SENSOR_DATA.accelerometer[1],
                     accelOffset[2] + FC.SENSOR_DATA.accelerometer[2],
-                    ];
+                ];
 
                 updateGraphHelperSize(accelHelpers);
                 samplesAccel = addSampleToData(accelData, samplesAccel, accelWithOffset);
@@ -421,7 +529,6 @@ TABS.motors.initialize = function (callback) {
             }
         });
 
-
         // set refresh speeds according to configuration saved in storage
         ConfigStorage.get(['motors_tab_sensor_settings', 'motors_tab_gyro_settings', 'motors_tab_accel_settings'], function (result) {
             if (result.motors_tab_sensor_settings) {
@@ -440,12 +547,11 @@ TABS.motors.initialize = function (callback) {
             $('.tab-motors .sensor select:first').change();
         });
 
-
         // Amperage
         function power_data_pull() {
             motorVoltage.text(i18n.getMessage('motorsVoltageValue', [FC.ANALOG.voltage]));
-            motor_mah_drawing_e.text(i18n.getMessage('motorsADrawingValue', [FC.ANALOG.amperage.toFixed(2)]));
-            motor_mah_drawn_e.text(i18n.getMessage('motorsmAhDrawnValue', [FC.ANALOG.mAhdrawn]));
+            motorMahDrawingElement.text(i18n.getMessage('motorsADrawingValue', [FC.ANALOG.amperage.toFixed(2)]));
+            motorMahDrawnElement.text(i18n.getMessage('motorsmAhDrawnValue', [FC.ANALOG.mAhdrawn]));
         }
 
         GUI.interval_add('motors_power_data_pull_slow', power_data_pull, 250, true); // 4 fps
@@ -472,42 +578,206 @@ TABS.motors.initialize = function (callback) {
             neutral3d = (FC.MOTOR_3D_CONFIG.neutral > 1575 || FC.MOTOR_3D_CONFIG.neutral < 1425) ? 1500 : FC.MOTOR_3D_CONFIG.neutral;
         }
 
-        const motorsWrapper = $('.motors .bar-wrapper'),
-            servos_wrapper = $('.servos .bar-wrapper');
+        const motorsWrapper = $('.motors .bar-wrapper');
 
         for (let i = 0; i < 8; i++) {
             motorsWrapper.append(`\
-                    <div class="m-block motor-${i}">\
-                    <div class="meter-bar">\
-                    <div class="label"></div>\
-                    <div class="indicator">\
-                    <div class="label">\
-                    <div class="label"></div>\
-                    </div>\
-                    </div>\
-                    </div>\
-                    </div>\
+                <div class="m-block motor-${i}">\
+                <div class="meter-bar">\
+                <div class="label"></div>\
+                <div class="indicator">\
+                <div class="label">\
+                <div class="label"></div>\
+                </div>\
+                </div>\
+                </div>\
+                </div>\
             `);
-
-            servos_wrapper.append('\
-                    <div class="m-block servo-' + (7 - i) + '">\
-                    <div class="meter-bar">\
-                    <div class="label"></div>\
-                    <div class="indicator">\
-                    <div class="label">\
-                    <div class="label"></div>\
-                    </div>\
-                    </div>\
-                    </div>\
-                    </div>\
-            ');
         }
 
         $('div.sliders input').prop('min', rangeMin)
         .prop('max', rangeMax);
         $('div.values li:not(:last)').text(rangeMin);
 
-        // UI hooks
+        const featuresElement = $('.tab-motors .features');
+        FC.FEATURE_CONFIG.features.generateElements(featuresElement);
+
+        /*
+        *   ESC protocol
+        */
+
+        const escProtocols = EscProtocols.GetAvailableProtocols(FC.CONFIG.apiVersion);
+        const escProtocolElement = $('select.escprotocol');
+
+        for (let j = 0; j < escProtocols.length; j++) {
+            escProtocolElement.append(`<option value="${j + 1}">${escProtocols[j]}</option>`);
+        }
+
+        const unsyncedPWMSwitchElement = $("input[id='unsyncedPWMSwitch']");
+        const divUnsyncedPWMFreq = $('div.unsyncedpwmfreq');
+
+        unsyncedPWMSwitchElement.on("change", function () {
+            if ($(this).is(':checked')) {
+                divUnsyncedPWMFreq.show();
+            } else {
+                divUnsyncedPWMFreq.hide();
+            }
+        });
+
+        const dshotBidirElement = $('input[id="dshotBidir"]');
+
+        unsyncedPWMSwitchElement.prop('checked', FC.PID_ADVANCED_CONFIG.use_unsyncedPwm !== 0).trigger("change");
+        $('input[name="unsyncedpwmfreq"]').val(FC.PID_ADVANCED_CONFIG.motor_pwm_rate);
+        $('input[name="digitalIdlePercent"]').val(FC.PID_ADVANCED_CONFIG.digitalIdlePercent);
+        if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_42)) {
+            dshotBidirElement.prop('checked', FC.MOTOR_CONFIG.use_dshot_telemetry).trigger("change");
+
+            self.previousDshotBidir = FC.MOTOR_CONFIG.use_dshot_telemetry;
+            self.previousFilterDynQ = FC.FILTER_CONFIG.dyn_notch_q;
+            self.previousFilterDynWidth = FC.FILTER_CONFIG.dyn_notch_width_percent;
+
+            dshotBidirElement.on("change", function () {
+                const value = $(this).prop('checked');
+                const newValue = (value !== FC.MOTOR_CONFIG.use_dshot_telemetry) ? 'On' : 'Off';
+                self.analyticsChanges['BidirectionalDshot'] = newValue;
+                FC.MOTOR_CONFIG.use_dshot_telemetry = value;
+
+                FC.FILTER_CONFIG.dyn_notch_width_percent = self.previousFilterDynWidth;
+                FC.FILTER_CONFIG.dyn_notch_q = self.previousFilterDynQ;
+
+                if (FC.FILTER_CONFIG.gyro_rpm_notch_harmonics !== 0) { // if rpm filter is active
+                    if (value && !self.previousDshotBidir) {
+                        FC.FILTER_CONFIG.dyn_notch_width_percent = FILTER_DEFAULT.dyn_notch_width_percent_rpm;
+                        FC.FILTER_CONFIG.dyn_notch_q = FILTER_DEFAULT.dyn_notch_q_rpm;
+                    } else if (!value && self.previousDshotBidir) {
+                        FC.FILTER_CONFIG.dyn_notch_width_percent = FILTER_DEFAULT.dyn_notch_width_percent;
+                        FC.FILTER_CONFIG.dyn_notch_q = FILTER_DEFAULT.dyn_notch_q;
+                    }
+                }
+
+                if (FC.FILTER_CONFIG.dyn_notch_width_percent !== self.previousFilterDynWidth) {
+                    showDialogDynFiltersChange();
+                }
+            });
+
+            $('input[name="motorPoles"]').val(FC.MOTOR_CONFIG.motor_poles);
+        }
+
+        $('#escProtocolTooltip').toggle(semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_42));
+        $('#escProtocolTooltipNoDSHOT1200').toggle(semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_42));
+
+        function updateVisibility() {
+            // Hide unused settings
+            const protocolName = $('select.escprotocol option:selected').text();
+            const protocolConfigured = protocolName !== 'DISABLED';
+            let digitalProtocol = false;
+            switch (protocolName) {
+                case 'DSHOT150':
+                case 'DSHOT300':
+                case 'DSHOT600':
+                case 'DSHOT1200':
+                case 'PROSHOT1000':
+                    digitalProtocol = true;
+
+                    break;
+                default:
+            }
+
+            const rpmFeaturesVisible = digitalProtocol && dshotBidirElement.is(':checked') || $("input[name='ESC_SENSOR']").is(':checked');
+
+            $('div.minthrottle').toggle(protocolConfigured && !digitalProtocol);
+            $('div.maxthrottle').toggle(protocolConfigured && !digitalProtocol);
+            $('div.mincommand').toggle(protocolConfigured && !digitalProtocol);
+            $('div.checkboxPwm').toggle(protocolConfigured && !digitalProtocol);
+            divUnsyncedPWMFreq.toggle(protocolConfigured && !digitalProtocol);
+
+            $('div.digitalIdlePercent').toggle(protocolConfigured && digitalProtocol);
+            $('.escSensor').toggle(protocolConfigured && digitalProtocol);
+
+            $('div.checkboxDshotBidir').toggle(protocolConfigured && semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_42) && digitalProtocol);
+            $('div.motorPoles').toggle(protocolConfigured && rpmFeaturesVisible && semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_42));
+
+            $('.escMotorStop').toggle(protocolConfigured);
+
+            $('#escProtocolDisabled').toggle(!protocolConfigured);
+
+            //trigger change unsyncedPWMSwitch to show/hide Motor PWM freq input
+            unsyncedPWMSwitchElement.trigger("change");
+        }
+
+        escProtocolElement.val(FC.PID_ADVANCED_CONFIG.fast_pwm_protocol + 1);
+        escProtocolElement.on("change", function () {
+            const escProtocolValue = parseInt($(this).val()) - 1;
+
+            let newValue = undefined;
+            if (escProtocolValue !== FC.PID_ADVANCED_CONFIG.fast_pwm_protocol) {
+                newValue = $(this).find('option:selected').text();
+            }
+            self.analyticsChanges['EscProtocol'] = newValue;
+
+            updateVisibility();
+        }).trigger("change");
+
+        //trigger change dshotBidir and ESC_SENSOR to show/hide Motor Poles tab
+        dshotBidirElement.change(updateVisibility).trigger("change");
+        $("input[name='ESC_SENSOR']").on("change", updateVisibility).trigger("change");
+
+        // fill throttle
+        $('input[name="minthrottle"]').val(FC.MOTOR_CONFIG.minthrottle);
+        $('input[name="maxthrottle"]').val(FC.MOTOR_CONFIG.maxthrottle);
+        $('input[name="mincommand"]').val(FC.MOTOR_CONFIG.mincommand);
+
+        //fill 3D
+        $('.tab-motors ._3d').show();
+        $('input[name="_3ddeadbandlow"]').val(FC.MOTOR_3D_CONFIG.deadband3d_low);
+        $('input[name="_3ddeadbandhigh"]').val(FC.MOTOR_3D_CONFIG.deadband3d_high);
+        $('input[name="_3dneutral"]').val(FC.MOTOR_3D_CONFIG.neutral);
+
+        /*
+        * UI hooks
+        */
+
+       function checkUpdate3dControls() {
+            if (FC.FEATURE_CONFIG.features.isEnabled('3D')) {
+                $('._3dSettings').show();
+            } else {
+                $('._3dSettings').hide();
+            }
+        }
+
+        $('input.feature', featuresElement).on("change", function () {
+            const element = $(this);
+
+            FC.FEATURE_CONFIG.features.updateData(element);
+            updateTabList(FC.FEATURE_CONFIG.features);
+
+            switch (element.attr('name')) {
+                case 'MOTOR_STOP':
+                    break;
+
+                case '3D':
+                    checkUpdate3dControls();
+                    break;
+
+                default:
+                    break;
+            }
+        });
+
+        $(featuresElement).filter('select').change(function () {
+            const element = $(this);
+
+            FC.FEATURE_CONFIG.features.updateData(element);
+            updateTabList(FC.FEATURE_CONFIG.features);
+
+        });
+
+        checkUpdate3dControls();
+
+        /*
+        * MOTOR TESTING
+        */
+
         function setSlidersDefault() {
             // change all values to default
             if (self.feature3DEnabled) {
@@ -535,9 +805,19 @@ TABS.motors.initialize = function (callback) {
 
         setSlidersDefault();
 
-        $('#motorsEnableTestMode').change(function () {
-            const enabled = $(this).is(':checked');
-
+        motorsEnableTestModeElement.change(function () {
+            let enabled = $(this).is(':checked');
+            // prevent or disable testing if configHasChanged flag is set.
+            if (self.configHasChanged) {
+                if (enabled) {
+                    const message = i18n.getMessage('motorsDialogSettingsChanged');
+                    showDialogSettingsChanged(message);
+                    enabled = false;
+                }
+                // disable input
+                motorsEnableTestModeElement.prop('checked', false);
+            }
+            setContentButtons(enabled);
             setSlidersEnabled(enabled);
 
             $('div.sliders input').trigger('input');
@@ -596,7 +876,7 @@ TABS.motors.initialize = function (callback) {
         }
 
         if (motorsRunning) {
-            $('#motorsEnableTestMode').prop('checked', true).change();
+            motorsEnableTestModeElement.prop('checked', true).change();
 
             // motors are running adjust sliders to current values
 
@@ -636,14 +916,10 @@ TABS.motors.initialize = function (callback) {
 
         function get_motor_telemetry_data() {
             if (FC.MOTOR_CONFIG.use_dshot_telemetry || FC.MOTOR_CONFIG.use_esc_sensor) {
-                MSP.send_message(MSPCodes.MSP_MOTOR_TELEMETRY, false, false, get_servo_data);
+                MSP.send_message(MSPCodes.MSP_MOTOR_TELEMETRY, false, false, update_ui);
             } else {
-                get_servo_data();
+                update_ui();
             }
-        }
-
-        function get_servo_data() {
-            MSP.send_message(MSPCodes.MSP_SERVO, false, false, update_ui);
         }
 
         const fullBlockScale = rangeMax - rangeMin;
@@ -681,15 +957,13 @@ TABS.motors.initialize = function (callback) {
                     rpmMotorValue = rpmMotorValue.toString().padStart(MAX_VALUE_SIZE);
                     let telemetryText = i18n.getMessage('motorsRPM', {motorsRpmValue: rpmMotorValue});
 
-
                     if (FC.MOTOR_CONFIG.use_dshot_telemetry) {
 
                         let invalidPercent = FC.MOTOR_TELEMETRY_DATA.invalidPercent[i];
-
                         let classError = (invalidPercent > MAX_INVALID_PERCENT) ? "warning" : "";
                         invalidPercent = (invalidPercent / 100).toFixed(2).toString().padStart(MAX_VALUE_SIZE);
 
-                        telemetryText += "<br><span class='" + classError + "'>";
+                        telemetryText += `<br><span class="${classError}">`;
                         telemetryText += i18n.getMessage('motorsRPMError', {motorsErrorValue: invalidPercent});
                         telemetryText += "</span>";
                     }
@@ -697,39 +971,66 @@ TABS.motors.initialize = function (callback) {
                     if (FC.MOTOR_CONFIG.use_esc_sensor) {
 
                         let escTemperature = FC.MOTOR_TELEMETRY_DATA.temperature[i];
+                        escTemperature = escTemperature.toString().padStart(MAX_VALUE_SIZE);
 
                         telemetryText += "<br>";
-                        escTemperature = escTemperature.toString().padStart(MAX_VALUE_SIZE);
                         telemetryText += i18n.getMessage('motorsESCTemperature', {motorsESCTempValue: escTemperature});
                     }
 
-                    $('.motor_testing .telemetry .motor-' + i).html(telemetryText);
+                    $(`.motor_testing .telemetry .motor-${i}`).html(telemetryText);
                 }
             }
 
-            // servo indicators are still using old (not flexible block scale), it will be changed in the future accordingly
-            for (let i = 0; i < FC.SERVO_DATA.length; i++) {
-                const data = FC.SERVO_DATA[i] - 1000,
-                marginTop = blockHeight - (data * (blockHeight / 1000)).clamp(0, blockHeight),
-                height = (data * (blockHeight / 1000)).clamp(0, blockHeight),
-                color = parseInt(data * 0.009);
-
-                $(`.servo-${i} .label`, servos_wrapper).text(FC.SERVO_DATA[i]);
-                $(`.servo-${i} .indicator`, servos_wrapper).css({
-                    'margin-top' : `${marginTop}px`,
-                    'height' : `${height}px`,
-                    'background-color' : `rgba(255,187,0,1${color})`,
-                });
-            }
             //keep the following here so at least we get a visual cue of our motor setup
             update_arm_status();
 
             if (previousArmState != self.armed) {
                 console.log('arm state change detected');
 
-                $('#motorsEnableTestMode').change();
+                motorsEnableTestModeElement.change();
             }
         }
+
+        $('a.save').on('click', function() {
+            // gather data that doesn't have automatic change event bound
+            FC.MOTOR_CONFIG.minthrottle = parseInt($('input[name="minthrottle"]').val());
+            FC.MOTOR_CONFIG.maxthrottle = parseInt($('input[name="maxthrottle"]').val());
+            FC.MOTOR_CONFIG.mincommand = parseInt($('input[name="mincommand"]').val());
+
+            if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_42)) {
+                FC.MOTOR_CONFIG.motor_poles = parseInt($('input[name="motorPoles"]').val());
+            }
+
+            FC.MOTOR_3D_CONFIG.deadband3d_low = parseInt($('input[name="_3ddeadbandlow"]').val());
+            FC.MOTOR_3D_CONFIG.deadband3d_high = parseInt($('input[name="_3ddeadbandhigh"]').val());
+            FC.MOTOR_3D_CONFIG.neutral = parseInt($('input[name="_3dneutral"]').val());
+
+            FC.PID_ADVANCED_CONFIG.fast_pwm_protocol = parseInt(escProtocolElement.val() - 1);
+            FC.PID_ADVANCED_CONFIG.use_unsyncedPwm = unsyncedPWMSwitchElement.is(':checked') ? 1 : 0;
+            FC.PID_ADVANCED_CONFIG.motor_pwm_rate = parseInt($('input[name="unsyncedpwmfreq"]').val());
+            FC.PID_ADVANCED_CONFIG.digitalIdlePercent = parseFloat($('input[name="digitalIdlePercent"]').val());
+
+            Promise
+            .resolve(true)
+            .then(() => { return MSP.promise(MSPCodes.MSP_SET_FEATURE_CONFIG, mspHelper.crunch(MSPCodes.MSP_SET_FEATURE_CONFIG)); })
+            .then(() => { return MSP.promise(MSPCodes.MSP_SET_MIXER_CONFIG, mspHelper.crunch(MSPCodes.MSP_SET_MIXER_CONFIG)); })
+            .then(() => { return MSP.promise(MSPCodes.MSP_SET_MOTOR_CONFIG, mspHelper.crunch(MSPCodes.MSP_SET_MOTOR_CONFIG)); })
+            .then(() => { return MSP.promise(MSPCodes.MSP_SET_MOTOR_3D_CONFIG, mspHelper.crunch(MSPCodes.MSP_SET_MOTOR_3D_CONFIG)); })
+            .then(() => { return MSP.promise(MSPCodes.MSP_SET_ADVANCED_CONFIG, mspHelper.crunch(MSPCodes.MSP_SET_ADVANCED_CONFIG)); })
+            .then(() => { return MSP.promise(MSPCodes.MSP_SET_ARMING_CONFIG, mspHelper.crunch(MSPCodes.MSP_SET_ARMING_CONFIG)); })
+            .then(() => { return (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_42)) ? MSP.promise(MSPCodes.MSP_SET_FILTER_CONFIG,
+                 mspHelper.crunch(MSPCodes.MSP_SET_FILTER_CONFIG)) : true; })
+            .then(() => { return MSP.promise(MSPCodes.MSP_EEPROM_WRITE); })
+            .then(() => {
+                GUI.log(i18n.getMessage('configurationEepromSaved'));
+                MSP.send_message(MSPCodes.MSP_SET_REBOOT, false, false);
+                reinitialiseConnection(self);
+             });
+
+            analytics.sendChangeEvents(analytics.EVENT_CATEGORIES.FLIGHT_CONTROLLER, self.analyticsChanges);
+            self.analyticsChanges = {};
+            self.configHasChanged = false;
+        });
 
         // enable Status and Motor data pulling
         GUI.interval_add('motor_and_status_pull', get_status, 50, true);
@@ -750,7 +1051,23 @@ TABS.motors.initialize = function (callback) {
             GUI.content_ready(callback);
         }
 
-       GUI.content_ready(callback);
+        GUI.content_ready(callback);
+    }
+
+    function showDialogSettingsChanged(message) {
+        const dialogSettingsChanged = $('#dialog-settings-changed')[0];
+
+        $('#dialog-settings-changed-content').html(message);
+
+        if (!dialogSettingsChanged.hasAttribute('open')) {
+            dialogSettingsChanged.showModal();
+            $('#dialog-settings-reset-confirmbtn').click(function() {
+                TABS.motors.refresh();
+            });
+            $('#dialog-settings-changed-confirmbtn').click(function() {
+                dialogSettingsChanged.close();
+            });
+        }
     }
 
     function setup_motor_output_reordering_dialog(callbackFunction, zeroThrottleValue)
@@ -824,6 +1141,18 @@ TABS.motors.initialize = function (callback) {
 
         callbackFunction();
     }
+};
+
+TABS.motors.refresh = function (callback) {
+    const self = this;
+
+    GUI.tab_switch_cleanup(function() {
+        self.initialize();
+
+        if (callback) {
+            callback();
+        }
+    });
 };
 
 TABS.motors.cleanup = function (callback) {

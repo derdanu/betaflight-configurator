@@ -1,7 +1,7 @@
 'use strict';
 
 const TuningSliders = {
-    sliderPidsMode: 0,
+    sliderPidsMode: 2,
     sliderMasterMultiplier: 1,
     sliderRollPitchRatio: 1,
     sliderIGain: 1,
@@ -10,12 +10,17 @@ const TuningSliders = {
     sliderDMinRatio: 1,
     sliderFFGain: 1,
     pidSlidersUnavailable: false,
+    GyroSliderUnavailable: false,
+    DTermSliderUnavailable: false,
+    FilterReset: false,
 
-    sliderGyroFilter: 0,
+    sliderGyroFilter: 1,
     sliderGyroFilterMultiplier: 1,
-    sliderDTermFilter: 0,
+    sliderDTermFilter: 1,
     sliderDTermFilterMultiplier: 1,
 
+    dMinFeatureEnabled: true,
+    defaultPDRatio: 0,
     PID_DEFAULT: [],
     FILTER_DEFAULT: {},
 
@@ -28,9 +33,22 @@ const TuningSliders = {
 
 const D_MIN_RATIO = 0.85;
 
+TuningSliders.setDMinFeatureEnabled = function(dMinFeatureEnabled) {
+    this.dMinFeatureEnabled = dMinFeatureEnabled;
+    if (this.dMinFeatureEnabled) {
+        this.defaultPDRatio = this.PID_DEFAULT[2] / this.PID_DEFAULT[0];
+    } else {
+        this.defaultPDRatio = this.PID_DEFAULT[2] / (this.PID_DEFAULT[0] * (1 / D_MIN_RATIO));
+    }
+};
+
 TuningSliders.initialize = function() {
     this.PID_DEFAULT = FC.getPidDefaults();
     this.FILTER_DEFAULT = FC.getFilterDefaults();
+
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        this.setDMinFeatureEnabled($('#dMinSwitch').is(':checked'));
+    }
 
     this.setExpertMode($('input[name="expertModeCheckbox"]').is(':checked'));
 
@@ -47,12 +65,17 @@ TuningSliders.initialize = function() {
     this.updateFilterSlidersDisplay();
 };
 
-TuningSliders.setExpertMode = function(expertMode) {
-    this.expertMode = expertMode;
-    if (this.expertMode) {
-        $('#slidersPidsBox, #slidersFilterBox').removeClass('nonExpertModeSliders');
+TuningSliders.setExpertMode = function() {
+    this.expertMode = isExpertModeEnabled();
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        const dMinShow = parseInt($('.pid_tuning input[name="dMinRoll"]').val()) !== 0;
+        $('.tab-pid_tuning .MasterSlider').toggle(this.expertMode);
+        $('.tab-pid_tuning .DMinRatioSlider').toggle(this.expertMode && dMinShow);
+        $('.tab-pid_tuning .advancedSlider').toggle(this.expertMode);
     } else {
-        $('#slidersPidsBox, #slidersFilterBox').addClass('nonExpertModeSliders');
+        $('#slidersPidsBox, #slidersFilterBox').toggleClass('nonExpertModeSliders', !this.expertMode);
+        $('.tab-pid_tuning .advancedSlider').hide();
+        $('.tab-pid_tuning .DMinRatioSlider').hide();
     }
 };
 
@@ -73,13 +96,17 @@ TuningSliders.downscaleSliderValue = function(value) {
 };
 
 TuningSliders.initPidSlidersPosition = function() {
-    if (semver.lte(FC.CONFIG.apiVersion, API_VERSION_1_43)) {
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
         // used to estimate PID slider positions based on PIDF values, and set respective slider position
         // provides only an estimation due to limitation of feature without firmware support, to be improved in later versions
-        this.sliderMasterMultiplier = Math.floor(FC.PIDS[2][1] / this.PID_DEFAULT[11] * 10) / 10;
-        this.sliderPDRatio = Math.floor(FC.PIDS[0][0] / FC.PIDS[0][2] / (this.PID_DEFAULT[0] / this.PID_DEFAULT[2]) * 10) / 10;
-        this.sliderPDGain = Math.floor(FC.ADVANCED_TUNING.dMinRoll / this.sliderMasterMultiplier / this.PID_DEFAULT[3] * 10) / 10;
-        this.sliderFFGain = Math.floor(FC.ADVANCED_TUNING.feedforwardRoll / this.sliderMasterMultiplier / this.PID_DEFAULT[4] * 10) / 10;
+        this.sliderMasterMultiplier = Math.round(FC.PIDS[2][1] / this.PID_DEFAULT[11] * 10) / 10;
+        this.sliderPDRatio = Math.round(FC.PIDS[0][2] / FC.PIDS[0][0] / this.defaultPDRatio * 10) / 10;
+        if (this.dMinFeatureEnabled) {
+            this.sliderPDGain = Math.round(FC.ADVANCED_TUNING.dMinRoll / this.sliderPDRatio / this.sliderMasterMultiplier / this.PID_DEFAULT[3] * 10) / 10;
+        } else {
+            this.sliderPDGain = Math.round(FC.PIDS[0][0] / this.sliderMasterMultiplier / (this.PID_DEFAULT[2] * (1 / D_MIN_RATIO)) * 10) / 10;
+        }
+        this.sliderFFGain = Math.round(FC.ADVANCED_TUNING.feedforwardRoll / this.sliderMasterMultiplier / this.PID_DEFAULT[4] * 10) / 10;
     } else {
         this.sliderPidsMode = FC.TUNING_SLIDERS.slider_pids_mode;
         this.sliderMasterMultiplier = FC.TUNING_SLIDERS.slider_master_multiplier / 100;
@@ -109,10 +136,11 @@ TuningSliders.initPidSlidersPosition = function() {
 };
 
 TuningSliders.initGyroFilterSliderPosition = function() {
-    if (semver.lte(FC.CONFIG.apiVersion, API_VERSION_1_43)) {
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
         this.sliderGyroFilterMultiplier = Math.floor((FC.FILTER_CONFIG.gyro_lowpass_dyn_min_hz + FC.FILTER_CONFIG.gyro_lowpass_dyn_max_hz + FC.FILTER_CONFIG.gyro_lowpass2_hz) /
                         (this.FILTER_DEFAULT.gyro_lowpass_dyn_min_hz + this.FILTER_DEFAULT.gyro_lowpass_dyn_max_hz + this.FILTER_DEFAULT.gyro_lowpass2_hz) * 100) / 100;
     } else {
+        this.sliderGyroFilter = FC.TUNING_SLIDERS.slider_gyro_filter;
         this.sliderGyroFilterMultiplier = FC.TUNING_SLIDERS.slider_gyro_filter_multiplier / 100;
     }
 
@@ -121,10 +149,11 @@ TuningSliders.initGyroFilterSliderPosition = function() {
 };
 
 TuningSliders.initDTermFilterSliderPosition = function() {
-    if (semver.lte(FC.CONFIG.apiVersion, API_VERSION_1_43)) {
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
         this.sliderDTermFilterMultiplier = Math.floor((FC.FILTER_CONFIG.dterm_lowpass_dyn_min_hz + FC.FILTER_CONFIG.dterm_lowpass_dyn_max_hz + FC.FILTER_CONFIG.dterm_lowpass2_hz) /
                         (this.FILTER_DEFAULT.dterm_lowpass_dyn_min_hz + this.FILTER_DEFAULT.dterm_lowpass_dyn_max_hz + this.FILTER_DEFAULT.dterm_lowpass2_hz) * 100) / 100;
     } else {
+        this.sliderDTermFilter = FC.TUNING_SLIDERS.slider_dterm_filter;
         this.sliderDTermFilterMultiplier = FC.TUNING_SLIDERS.slider_dterm_filter_multiplier / 100;
     }
 
@@ -143,7 +172,7 @@ TuningSliders.resetPidSliders = function() {
         this.sliderFFGain = 1;
     }
 
-    if (semver.lte(FC.CONFIG.apiVersion, API_VERSION_1_43)) {
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
         $('#sliderMasterMultiplier').val(this.downscaleSliderValue(this.sliderMasterMultiplier));
         $('#sliderPDRatio').val(this.downscaleSliderValue(this.sliderPDRatio));
         $('#sliderPDGain').val(this.downscaleSliderValue(this.sliderPDGain));
@@ -153,83 +182,119 @@ TuningSliders.resetPidSliders = function() {
     }
 
     this.calculateNewPids();
-    this.updatePidSlidersDisplay();
 };
 
 TuningSliders.resetGyroFilterSlider = function() {
-    if (!this.cachedGyroSliderValues) {
-        this.sliderGyroFilterMultiplier = 1;
-    }
-
-    if (semver.lte(FC.CONFIG.apiVersion, API_VERSION_1_43)) {
-        $('#sliderGyroFilterMultiplier').val(this.downscaleSliderValue(this.sliderGyroFilterMultiplier));
-    } else {
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        if (!this.cachedGyroSliderValues) {
+            this.sliderGyroFilterMultiplier = 1;
+        }
+        this.sliderGyroFilter = 1;
+        FC.TUNING_SLIDERS.slider_gyro_filter = 1;
         this.initGyroFilterSliderPosition();
+    } else {
+        this.sliderGyroFilterMultiplier = 1;
+        $('#sliderGyroFilterMultiplier').val(this.downscaleSliderValue(this.sliderGyroFilterMultiplier));
     }
-
+    this.FilterReset = true;
     this.calculateNewGyroFilters();
-    this.updateFilterSlidersDisplay();
+
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        this.updateFilterSlidersDisplay();
+    }
 };
 
 TuningSliders.resetDTermFilterSlider = function() {
-    if (!this.cachedDTermSliderValues) {
-        this.sliderDTermFilterMultiplier = 1;
-    }
-
-    if (semver.lte(FC.CONFIG.apiVersion, API_VERSION_1_43)) {
-        $('#sliderDTermFilterMultiplier').val(this.downscaleSliderValue(this.sliderDTermFilterMultiplier));
-    } else {
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        if (!this.cachedDTermSliderValues) {
+            this.sliderDTermFilterMultiplier = 1;
+        }
+        this.sliderDtermFilter = 1;
+        FC.TUNING_SLIDERS.slider_dterm_filter = 1;
         this.initDTermFilterSliderPosition();
+    } else {
+        this.sliderDTermFilterMultiplier = 1;
+        $('#sliderDTermFilterMultiplier').val(this.downscaleSliderValue(this.sliderDTermFilterMultiplier));
+    }
+    this.FilterReset = true;
+    this.calculateNewDTermFilters();
+
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        this.updateFilterSlidersDisplay();
+    }
+};
+
+TuningSliders.legacyUpdateFilterSlidersDisplay = function() {
+    if (parseInt($('.pid_filter input[name="gyroLowpassDynMinFrequency"]').val()) !==
+            Math.floor(this.FILTER_DEFAULT.gyro_lowpass_dyn_min_hz * this.sliderGyroFilterMultiplier) ||
+        parseInt($('.pid_filter input[name="gyroLowpassDynMaxFrequency"]').val()) !==
+            Math.floor(this.FILTER_DEFAULT.gyro_lowpass_dyn_max_hz * this.sliderGyroFilterMultiplier) ||
+        parseInt($('.pid_filter select[name="gyroLowpassDynType"]').val()) !== this.FILTER_DEFAULT.gyro_lowpass_type ||
+        parseInt($('.pid_filter input[name="gyroLowpass2Frequency"]').val()) !==
+            Math.floor(this.FILTER_DEFAULT.gyro_lowpass2_hz * this.sliderGyroFilterMultiplier) ||
+        parseInt($('.pid_filter select[name="gyroLowpass2Type"]').val()) !== this.FILTER_DEFAULT.gyro_lowpass2_type) {
+        this.GyroSliderUnavailable = true;
+    } else {
+        this.cachedGyroSliderValues = true;
     }
 
-    this.calculateNewDTermFilters();
-    this.updateFilterSlidersDisplay();
+    if (parseInt($('.pid_filter input[name="dtermLowpassDynMinFrequency"]').val()) !==
+            Math.round(this.FILTER_DEFAULT.dterm_lowpass_dyn_min_hz * this.sliderDTermFilterMultiplier) ||
+        parseInt($('.pid_filter input[name="dtermLowpassDynMaxFrequency"]').val()) !==
+            Math.round(this.FILTER_DEFAULT.dterm_lowpass_dyn_max_hz * this.sliderDTermFilterMultiplier) ||
+        parseInt($('.pid_filter select[name="dtermLowpassDynType"]').val()) !== this.FILTER_DEFAULT.dterm_lowpass_type ||
+        parseInt($('.pid_filter input[name="dtermLowpass2Frequency"]').val()) !==
+            Math.round(this.FILTER_DEFAULT.dterm_lowpass2_hz * this.sliderDTermFilterMultiplier) ||
+        parseInt($('.pid_filter select[name="dtermLowpass2Type"]').val()) !== this.FILTER_DEFAULT.dterm_lowpass2_type) {
+        this.DTermSliderUnavailable = true;
+    } else {
+        this.cachedDTermSliderValues = true;
+    }
 };
 
 TuningSliders.updatePidSlidersDisplay = function() {
-    // check if pid values changed manually by saving current values, doing the slider based calculation, and comaparing
-    // if values before and after calculation, if all of them are equal the values haven't been changed manually
+    // check if pid values changed manually by comparing the current values with those calculated by the sliders,
+    // if all of them are equal the values haven't been changed manually
     const WARNING_P_GAIN = 70;
     const WARNING_I_GAIN = 120;
     const WARNING_DMAX_GAIN = 60;
     const WARNING_DMIN_GAIN = 40;
 
-    if (semver.lte(FC.CONFIG.apiVersion, API_VERSION_1_43)) {
-        this.pidSlidersUnavailable = false;
-        let currentPIDs = [];
-        FC.PID_NAMES.forEach(function(elementPid, indexPid) {
-            const pidElements = $(`.pid_tuning .${elementPid} input`);
-            pidElements.each(function (indexInput) {
-                if (indexPid < 3 && indexInput < 5) {
-                    currentPIDs.push($(this).val());
-                }
-            });
-        });
-        this.calculateNewPids();
-        FC.PID_NAMES.forEach(function(elementPid, indexPid) {
-            const pidElements = $(`.pid_tuning .${elementPid} input`);
-            pidElements.each(function (indexInput) {
-                if (indexPid < 3 && indexInput < 5) {
-                    if (currentPIDs[indexPid * 5 + indexInput] != $(this).val()) {
-                        TuningSliders.pidSlidersUnavailable = true;
-                    }
-                    $(this).val(currentPIDs[indexPid * 5 + indexInput]);
-                }
-            });
-        });
+    this.pidSlidersUnavailable = false;
 
-        if ($('input[id="useIntegratedYaw"]').is(':checked')) {
-            this.pidSlidersUnavailable = true;
-        }
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        this.calculateNewPids(true);
+    }
 
-        if (!this.pidSlidersUnavailable) {
-            this.cachedPidSliderValues = true;
+    FC.PID_NAMES.forEach(function (elementPid, indexPid) {
+        const pidElements = $(`.pid_tuning .${elementPid} input`);
+        pidElements.each(function (indexInput) {
+            if (indexPid < 3 && indexInput < 3) {
+                if (parseInt($(this).val()) !== FC.PIDS[indexPid][indexInput]) {
+                    TuningSliders.pidSlidersUnavailable = true;
+                }
+            }
+        });
+    });
+
+    if ($('input[id="useIntegratedYaw"]').is(':checked')) {
+        this.pidSlidersUnavailable = true;
+    }
+
+    if (!this.pidSlidersUnavailable && !semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        this.cachedPidSliderValues = true;
+    }
+
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        if (this.sliderPidsMode === 0) {
+           this.pidSlidersUnavailable = true;
         }
+        this.setExpertMode();
     }
 
     $('.tuningPIDSliders').toggle(!this.pidSlidersUnavailable);
     $('.subtab-pid .slidersDisabled').toggle(this.pidSlidersUnavailable);
-    $('.subtab-pid .nonExpertModeSlidersNote').toggle(!this.pidSlidersUnavailable && !this.expertMode);
+    $('.subtab-pid .nonExpertModeSlidersNote').toggle(!this.pidSlidersUnavailable && !this.expertMode && !semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44));
     $('.subtab-pid .slidersWarning').toggle((FC.PIDS[1][0] > WARNING_P_GAIN || FC.PIDS[1][1] > WARNING_I_GAIN || FC.PIDS[1][2] > WARNING_DMAX_GAIN ||
                                                 FC.ADVANCED_TUNING.dMinPitch > WARNING_DMIN_GAIN) && !this.pidSlidersUnavailable);
 };
@@ -239,62 +304,100 @@ TuningSliders.updateFilterSlidersDisplay = function() {
     const WARNING_FILTER_HIGH_GAIN = 1.4;
     const WARNING_FILTER_LOW_GAIN = 0.7;
 
-    this.sliderGyroFilter = false;
-    this.sliderDTermFilter = false;
+    this.GyroSliderUnavailable = false;
+    this.DTermSliderUnavailable = false;
 
-    if (parseInt($('.pid_filter input[name="gyroLowpassDynMinFrequency"]').val()) !==
-            Math.floor(this.FILTER_DEFAULT.gyro_lowpass_dyn_min_hz * this.sliderGyroFilterMultiplier) ||
-        parseInt($('.pid_filter input[name="gyroLowpassDynMaxFrequency"]').val()) !==
-            Math.floor(this.FILTER_DEFAULT.gyro_lowpass_dyn_max_hz * this.sliderGyroFilterMultiplier) ||
-        parseInt($('.pid_filter select[name="gyroLowpassDynType"]').val()) !== this.FILTER_DEFAULT.gyro_lowpass_type ||
-        parseInt($('.pid_filter input[name="gyroLowpass2Frequency"]').val()) !==
-            Math.floor(this.FILTER_DEFAULT.gyro_lowpass2_hz * this.sliderGyroFilterMultiplier) ||
-        parseInt($('.pid_filter select[name="gyroLowpass2Type"]').val()) !== this.FILTER_DEFAULT.gyro_lowpass2_type) {
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        if (FC.TUNING_SLIDERS.slider_gyro_filter === 0) {
+            this.GyroSliderUnavailable = true;
+        }
+        if (FC.TUNING_SLIDERS.slider_dterm_filter === 0) {
+            this.DTermSliderUnavailable = true;
+        }
+        if (parseInt($('.pid_filter input[name="gyroLowpassDynMinFrequency"]').val()) !==
+                Math.round(this.FILTER_DEFAULT.gyro_lowpass_dyn_min_hz * this.sliderGyroFilterMultiplier) ||
+            parseInt($('.pid_filter input[name="gyroLowpassDynMaxFrequency"]').val()) !==
+                Math.floor(this.FILTER_DEFAULT.gyro_lowpass_dyn_max_hz * this.sliderGyroFilterMultiplier) ||
+            parseInt($('.pid_filter select[name="gyroLowpassDynType"]').val()) !== this.FILTER_DEFAULT.gyro_lowpass_type ||
+            parseInt($('.pid_filter input[name="gyroLowpass2Frequency"]').val()) !==
+                Math.floor(this.FILTER_DEFAULT.gyro_lowpass2_hz * this.sliderGyroFilterMultiplier) ||
+            parseInt($('.pid_filter select[name="gyroLowpass2Type"]').val()) !== this.FILTER_DEFAULT.gyro_lowpass2_type) {
+            this.GyroSliderUnavailable = true;
+            this.sliderGyroFilter = 0;
+        } else {
+            this.cachedGyroSliderValues = true;
+            this.sliderGyroFilter = 1;
+        }
 
-        $('.tuningFilterSliders .sliderLabels tr:nth-child(2)').hide();
-        this.sliderGyroFilter = true;
+        if (parseInt($('.pid_filter input[name="dtermLowpassDynMinFrequency"]').val()) !==
+                Math.floor(this.FILTER_DEFAULT.dterm_lowpass_dyn_min_hz * this.sliderDTermFilterMultiplier) ||
+                Math.abs(parseInt($('.pid_filter input[name="dtermLowpassDynMaxFrequency"]').val()) - this.FILTER_DEFAULT.dterm_lowpass_dyn_max_hz * this.sliderDTermFilterMultiplier) > 1 ||
+            parseInt($('.pid_filter select[name="dtermLowpassDynType"]').val()) !== this.FILTER_DEFAULT.dterm_lowpass_type ||
+            parseInt($('.pid_filter input[name="dtermLowpass2Frequency"]').val()) !==
+                Math.floor(this.FILTER_DEFAULT.dterm_lowpass2_hz * this.sliderDTermFilterMultiplier) ||
+            parseInt($('.pid_filter select[name="dtermLowpass2Type"]').val()) !== this.FILTER_DEFAULT.dterm_lowpass2_type) {
+            this.DTermSliderUnavailable = true;
+            this.sliderDTermFilter = 0;
+        } else {
+            this.cachedDTermSliderValues = true;
+            this.sliderDTermFilter = 1;
+        }
     } else {
-        $('.tuningFilterSliders .sliderLabels tr:nth-child(2)').show()
-        this.cachedGyroSliderValues = true;
+        this.legacyUpdateFilterSlidersDisplay();
     }
 
-    if (parseInt($('.pid_filter input[name="dtermLowpassDynMinFrequency"]').val()) !==
-            Math.floor(this.FILTER_DEFAULT.dterm_lowpass_dyn_min_hz * this.sliderDTermFilterMultiplier) ||
-        parseInt($('.pid_filter input[name="dtermLowpassDynMaxFrequency"]').val()) !==
-            Math.floor(this.FILTER_DEFAULT.dterm_lowpass_dyn_max_hz * this.sliderDTermFilterMultiplier) ||
-        parseInt($('.pid_filter select[name="dtermLowpassDynType"]').val()) !== this.FILTER_DEFAULT.dterm_lowpass_type ||
-        parseInt($('.pid_filter input[name="dtermLowpass2Frequency"]').val()) !==
-            Math.floor(this.FILTER_DEFAULT.dterm_lowpass2_hz * this.sliderDTermFilterMultiplier) ||
-        parseInt($('.pid_filter select[name="dtermLowpass2Type"]').val()) !== this.FILTER_DEFAULT.dterm_lowpass2_type) {
 
+    if (this.GyroSliderUnavailable) {
+        $('.tuningFilterSliders .sliderLabels tr:nth-child(2)').hide();
+    } else {
+        $('.tuningFilterSliders .sliderLabels tr:nth-child(2)').show();
+    }
+
+    if (this.DTermSliderUnavailable) {
         $('.tuningFilterSliders .sliderLabels tr:last-child').hide();
-        this.sliderDTermFilter = true;
     } else {
         $('.tuningFilterSliders .sliderLabels tr:last-child').show();
-        this.cachedDTermSliderValues = true;
     }
 
-    $('.tuningFilterSliders').toggle(!(this.sliderGyroFilter && this.sliderDTermFilter));
-    $('.subtab-filter .slidersDisabled').toggle(this.sliderGyroFilter || this.sliderDTermFilter);
-    $('.subtab-filter .nonExpertModeSlidersNote').toggle((!this.sliderGyroFilter || !this.sliderDTermFilter) && !this.expertMode);
+    $('.tuningFilterSliders').toggle(!(this.GyroSliderUnavailable && this.DTermSliderUnavailable));
+    $('.subtab-filter .slidersDisabled').toggle(this.GyroSliderUnavailable || this.DTermSliderUnavailable);
+    $('.subtab-filter .nonExpertModeSlidersNote').toggle((!this.GyroSliderUnavailable || !this.DTermSliderUnavailable) && !this.expertMode);
     $('.subtab-filter .slidersWarning').toggle(((this.sliderGyroFilterMultiplier >= WARNING_FILTER_HIGH_GAIN ||
-                                                    this.sliderGyroFilterMultiplier <= WARNING_FILTER_LOW_GAIN) && !this.sliderGyroFilter) ||
+                                                    this.sliderGyroFilterMultiplier <= WARNING_FILTER_LOW_GAIN) && !this.GyroSliderUnavailable) ||
                                                     ((this.sliderDTermFilterMultiplier >= WARNING_FILTER_HIGH_GAIN ||
-                                                     this.sliderDTermFilterMultiplier <= WARNING_FILTER_LOW_GAIN) && !this.sliderDTermFilter));
+                                                     this.sliderDTermFilterMultiplier <= WARNING_FILTER_LOW_GAIN) && !this.DTermSliderUnavailable));
 };
 
-TuningSliders.updateFormPids = function() {
-    FC.PID_NAMES.forEach(function(elementPid, indexPid) {
-        const pidElements = $(`.pid_tuning .${elementPid} input`);
-        pidElements.each(function (indexInput) {
-            if (indexPid < 3 && indexInput < 3) {
-                $(this).val(FC.PIDS[indexPid][indexInput]);
-            }
+TuningSliders.updateFormPids = function(updateSlidersOnly = false) {
+    if (!updateSlidersOnly) {
+        FC.PID_NAMES.forEach(function (elementPid, indexPid) {
+            const pidElements = $(`.pid_tuning .${elementPid} input`);
+            pidElements.each(function (indexInput) {
+                if (indexPid < 3 && indexInput < 3) {
+                    $(this).val(FC.PIDS[indexPid][indexInput]);
+                }
+            });
         });
-    });
+
+        $('.pid_tuning input[name="dMinRoll"]').val(FC.ADVANCED_TUNING.dMinRoll);
+        $('.pid_tuning input[name="dMinPitch"]').val(FC.ADVANCED_TUNING.dMinPitch);
+        $('.pid_tuning input[name="dMinYaw"]').val(FC.ADVANCED_TUNING.dMinYaw);
+        $('.pid_tuning .ROLL input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardRoll);
+        $('.pid_tuning .PITCH input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardPitch);
+        $('.pid_tuning .YAW input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardYaw);
+    }
+
+    $('output[name="sliderMasterMultiplier-number"]').val(this.sliderMasterMultiplier);
+    $('output[name="sliderRollPitchRatio-number"]').val(this.sliderRollPitchRatio);
+    $('output[name="sliderIGain-number"]').val(this.sliderIGain);
+    $('output[name="sliderPDRatio-number"]').val(this.sliderPDRatio);
+    $('output[name="sliderPDGain-number"]').val(this.sliderPDGain);
+    $('output[name="sliderDMinRatio-number"]').val(this.sliderDMinRatio);
+    $('output[name="sliderFFGain-number"]').val(this.sliderFFGain);
+
 };
 
-TuningSliders.legacyCalculateNewPids = function() {
+TuningSliders.legacyCalculatePids = function(updateSlidersOnly = false) {
     const MAX_PID_GAIN = 200;
     const MAX_DMIN_GAIN = 100;
     const MAX_FF_GAIN = 2000;
@@ -302,22 +405,25 @@ TuningSliders.legacyCalculateNewPids = function() {
     // only used for 4.1 where calculation is not done in firmware
     if (this.dMinFeatureEnabled) {
         //dmin
-        FC.ADVANCED_TUNING.dMinRoll = Math.floor(this.PID_DEFAULT[3] * this.sliderPDGain);
-        FC.ADVANCED_TUNING.dMinPitch = Math.floor(this.PID_DEFAULT[8] * this.sliderPDGain);
+        FC.ADVANCED_TUNING.dMinRoll = Math.round(this.PID_DEFAULT[3] * this.sliderPDGain * this.sliderPDRatio);
+        FC.ADVANCED_TUNING.dMinPitch = Math.round(this.PID_DEFAULT[8] * this.sliderPDGain * this.sliderPDRatio);
         // dmax
-        FC.PIDS[0][2] = Math.floor(this.PID_DEFAULT[2] * this.sliderPDGain);
-        FC.PIDS[1][2] = Math.floor(this.PID_DEFAULT[7] * this.sliderPDGain);
+        FC.PIDS[0][2] = Math.round(this.PID_DEFAULT[2] * this.sliderPDGain * this.sliderPDRatio);
+        FC.PIDS[1][2] = Math.round(this.PID_DEFAULT[7] * this.sliderPDGain * this.sliderPDRatio);
     } else {
         FC.ADVANCED_TUNING.dMinRoll = 0;
         FC.ADVANCED_TUNING.dMinPitch = 0;
-        FC.PIDS[0][2] = Math.floor(this.PID_DEFAULT[3] * this.sliderPDGain);
-        FC.PIDS[1][2] = Math.floor(this.PID_DEFAULT[8] * this.sliderPDGain);
+        FC.PIDS[0][2] = Math.round((this.PID_DEFAULT[2] * D_MIN_RATIO) * this.sliderPDGain * this.sliderPDRatio);
+        FC.PIDS[1][2] = Math.round((this.PID_DEFAULT[7] * D_MIN_RATIO) * this.sliderPDGain * this.sliderPDRatio);
     }
 
-    FC.PIDS[0][0] = Math.floor(FC.PIDS[0][2] * this.PID_DEFAULT[0] / this.PID_DEFAULT[2] * this.sliderPDRatio);
-    FC.PIDS[1][0] = Math.floor(FC.PIDS[1][2] * this.PID_DEFAULT[5] / this.PID_DEFAULT[7] * this.sliderPDRatio);
-    FC.PIDS[2][0] = Math.floor(this.PID_DEFAULT[10] * this.sliderPDGain);
-
+    FC.PIDS[0][0] = Math.round(this.PID_DEFAULT[0] * this.sliderPDGain);
+    FC.PIDS[1][0] = Math.round(this.PID_DEFAULT[5] * this.sliderPDGain);
+    FC.PIDS[2][0] = Math.round(this.PID_DEFAULT[10] * this.sliderPDGain);
+    // ff
+    FC.ADVANCED_TUNING.feedforwardRoll = Math.round(this.PID_DEFAULT[4] * this.sliderFFGain);
+    FC.ADVANCED_TUNING.feedforwardPitch = Math.round(this.PID_DEFAULT[9] * this.sliderFFGain);
+    FC.ADVANCED_TUNING.feedforwardYaw = Math.round(this.PID_DEFAULT[14] * this.sliderFFGain);
     // master slider part
     // these are not calculated anywhere other than master slider multiplier therefore set at default before every calculation
     FC.PIDS[0][1] = this.PID_DEFAULT[1];
@@ -330,76 +436,54 @@ TuningSliders.legacyCalculateNewPids = function() {
     //master slider multiplication, max value 200 for main PID values
     for (let i = 0; i < 3; i++) {
         for (let j = 0; j < 3; j++) {
-            FC.PIDS[j][i] = Math.min(Math.floor(FC.PIDS[j][i] * this.sliderMasterMultiplier), MAX_PID_GAIN);
+            FC.PIDS[j][i] = Math.min(Math.round(FC.PIDS[j][i] * this.sliderMasterMultiplier), MAX_PID_GAIN);
         }
     }
-    // ff
-    FC.ADVANCED_TUNING.feedforwardRoll = Math.min(Math.floor(this.PID_DEFAULT[4] * this.sliderFFGain * this.sliderMasterMultiplier), MAX_FF_GAIN);
-    FC.ADVANCED_TUNING.feedforwardPitch = Math.min(Math.floor(this.PID_DEFAULT[9] * this.sliderFFGain * this.sliderMasterMultiplier), MAX_FF_GAIN);
-    FC.ADVANCED_TUNING.feedforwardYaw = Math.min(Math.floor(this.PID_DEFAULT[14] * this.sliderFFGain * this.sliderMasterMultiplier), MAX_FF_GAIN);
+
+    FC.ADVANCED_TUNING.feedforwardRoll = Math.min(Math.round(FC.ADVANCED_TUNING.feedforwardRoll * this.sliderMasterMultiplier), MAX_FF_GAIN);
+    FC.ADVANCED_TUNING.feedforwardPitch = Math.min(Math.round(FC.ADVANCED_TUNING.feedforwardPitch * this.sliderMasterMultiplier), MAX_FF_GAIN);
+    FC.ADVANCED_TUNING.feedforwardYaw = Math.min(Math.round(FC.ADVANCED_TUNING.feedforwardYaw * this.sliderMasterMultiplier), MAX_FF_GAIN);
+
     if (this.dMinFeatureEnabled) {
-        FC.ADVANCED_TUNING.dMinRoll = Math.min(Math.floor(FC.ADVANCED_TUNING.dMinRoll * this.sliderMasterMultiplier), MAX_DMIN_GAIN);
-        FC.ADVANCED_TUNING.dMinPitch = Math.min(Math.floor(FC.ADVANCED_TUNING.dMinPitch * this.sliderMasterMultiplier), MAX_DMIN_GAIN);
-        FC.ADVANCED_TUNING.dMinYaw = Math.min(Math.floor(FC.ADVANCED_TUNING.dMinYaw * this.sliderMasterMultiplier), MAX_DMIN_GAIN);
+        FC.ADVANCED_TUNING.dMinRoll = Math.min(Math.round(FC.ADVANCED_TUNING.dMinRoll * this.sliderMasterMultiplier), MAX_DMIN_GAIN);
+        FC.ADVANCED_TUNING.dMinPitch = Math.min(Math.round(FC.ADVANCED_TUNING.dMinPitch * this.sliderMasterMultiplier), MAX_DMIN_GAIN);
+        FC.ADVANCED_TUNING.dMinYaw = Math.min(Math.round(FC.ADVANCED_TUNING.dMinYaw * this.sliderMasterMultiplier), MAX_DMIN_GAIN);
     }
 
-    this.updateFormPids();
+    this.updateFormPids(updateSlidersOnly);
+    TABS.pid_tuning.updatePIDColors();
 
-    $('.pid_tuning input[name="dMinRoll"]').val(FC.ADVANCED_TUNING.dMinRoll);
-    $('.pid_tuning input[name="dMinPitch"]').val(FC.ADVANCED_TUNING.dMinPitch);
-    $('.pid_tuning input[name="dMinYaw"]').val(FC.ADVANCED_TUNING.dMinYaw);
-    $('.pid_tuning .ROLL input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardRoll);
-    $('.pid_tuning .PITCH input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardPitch);
-    $('.pid_tuning .YAW input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardYaw);
 };
 
-TuningSliders.calculateNewPids = function() {
+TuningSliders.calculateNewPids = function(updateSlidersOnly = false) {
     // this is the main calculation for PID sliders, inputs are in form of slider position values
     // values get set both into forms and their respective variables
-    if (semver.lte(FC.CONFIG.apiVersion, API_VERSION_1_43)) {
-        this.legacyCalculateNewPids();
+    if (semver.lt(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        this.legacyCalculatePids(updateSlidersOnly);
     }
 
-    $('output[name="sliderMasterMultiplier-number"]').val(this.sliderMasterMultiplier);
-    $('output[name="sliderRollPitchRatio-number"]').val(this.sliderRollPitchRatio);
-    $('output[name="sliderIGain-number"]').val(this.sliderIGain);
-    $('output[name="sliderPDRatio-number"]').val(this.sliderPDRatio);
-    $('output[name="sliderPDGain-number"]').val(this.sliderPDGain);
-    $('output[name="sliderDMinRatio-number"]').val(this.sliderDMinRatio);
-    $('output[name="sliderFFGain-number"]').val(this.sliderFFGain);
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        FC.TUNING_SLIDERS.slider_pids_mode = parseInt($('#sliderPidsModeSelect').val());
+        //rounds slider values to nearies multiple of 5 and passes to the FW. Avoid dividing calc by (* x 100)/5 = 20
+        FC.TUNING_SLIDERS.slider_master_multiplier = Math.round(this.sliderMasterMultiplier * 20) * 5;
+        FC.TUNING_SLIDERS.slider_roll_pitch_ratio = Math.round(this.sliderRollPitchRatio * 20) * 5;
+        FC.TUNING_SLIDERS.slider_i_gain = Math.round(this.sliderIGain * 20) * 5;
+        FC.TUNING_SLIDERS.slider_pd_ratio = Math.round(this.sliderPDRatio * 20) * 5;
+        FC.TUNING_SLIDERS.slider_pd_gain = Math.round(this.sliderPDGain * 20) * 5;
+        FC.TUNING_SLIDERS.slider_dmin_ratio = Math.round(this.sliderDMinRatio * 20) * 5;
+        FC.TUNING_SLIDERS.slider_ff_gain = Math.round(this.sliderFFGain * 20) * 5;
 
-    FC.TUNING_SLIDERS.slider_pids_mode = parseInt($('#sliderPidsModeSelect').val());
-    FC.TUNING_SLIDERS.slider_master_multiplier = TuningSliders.sliderMasterMultiplier * 100;
-    FC.TUNING_SLIDERS.slider_roll_pitch_ratio = TuningSliders.sliderRollPitchRatio * 100;
-    FC.TUNING_SLIDERS.slider_i_gain = TuningSliders.sliderIGain * 100;
-    FC.TUNING_SLIDERS.slider_pd_ratio = TuningSliders.sliderPDRatio * 100;
-    FC.TUNING_SLIDERS.slider_pd_gain = TuningSliders.sliderPDGain * 100;
-    FC.TUNING_SLIDERS.slider_dmin_ratio = TuningSliders.sliderDMinRatio * 100;
-    FC.TUNING_SLIDERS.slider_ff_gain = TuningSliders.sliderFFGain * 100;
-
-    FC.TUNING_SLIDERS.slider_dterm_filter = TuningSliders.sliderDTermFilter ? 1 : 0;
-    FC.TUNING_SLIDERS.slider_dterm_filter_multiplier = TuningSliders.sliderDTermFilterMultiplier * 100;
-
-    FC.TUNING_SLIDERS.slider_gyro_filter = TuningSliders.sliderGyroFilter ? 1 : 0;
-    FC.TUNING_SLIDERS.slider_gyro_filter_multiplier = TuningSliders.sliderGyroFilterMultiplier * 100;
-
-    MSP.promise(MSPCodes.MSP_SET_TUNING_SLIDERS, mspHelper.crunch(MSPCodes.MSP_SET_TUNING_SLIDERS));
-    MSP.send_message(MSPCodes.MSP_PID);
-    MSP.send_message(MSPCodes.MSP_PID_ADVANCED);
-
-    this.updateFormPids();
-
-    $('.pid_tuning input[name="dMinRoll"]').val(FC.ADVANCED_TUNING.dMinRoll);
-    $('.pid_tuning input[name="dMinPitch"]').val(FC.ADVANCED_TUNING.dMinPitch);
-    $('.pid_tuning input[name="dMinYaw"]').val(FC.ADVANCED_TUNING.dMinYaw);
-    $('.pid_tuning .ROLL input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardRoll);
-    $('.pid_tuning .PITCH input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardPitch);
-    $('.pid_tuning .YAW input[name="f"]').val(FC.ADVANCED_TUNING.feedforwardYaw);
-
-    TABS.pid_tuning.updatePIDColors();
+        MSP.promise(MSPCodes.MSP_SET_TUNING_SLIDERS, mspHelper.crunch(MSPCodes.MSP_SET_TUNING_SLIDERS))
+        .then(() => MSP.promise(MSPCodes.MSP_PID))
+        .then(() => MSP.promise(MSPCodes.MSP_PID_ADVANCED))
+        .then(() => {
+            this.updateFormPids(updateSlidersOnly);
+            TABS.pid_tuning.updatePIDColors();
+        });
+    }
 };
 
-TuningSliders.calculateNewGyroFilters = function() {
+TuningSliders.calculateLegacyGyroFilters = function() {
     // calculate, set and display new values in forms based on slider position
     FC.FILTER_CONFIG.gyro_lowpass_dyn_min_hz = Math.floor(this.FILTER_DEFAULT.gyro_lowpass_dyn_min_hz * this.sliderGyroFilterMultiplier);
     FC.FILTER_CONFIG.gyro_lowpass_dyn_max_hz = Math.floor(this.FILTER_DEFAULT.gyro_lowpass_dyn_max_hz * this.sliderGyroFilterMultiplier);
@@ -407,26 +491,71 @@ TuningSliders.calculateNewGyroFilters = function() {
     FC.FILTER_CONFIG.gyro_lowpass_type = this.FILTER_DEFAULT.gyro_lowpass_type;
     FC.FILTER_CONFIG.gyro_lowpass2_type = this.FILTER_DEFAULT.gyro_lowpass2_type;
 
-    $('.pid_filter input[name="gyroLowpassDynMinFrequency"]').val(FC.FILTER_CONFIG.gyro_lowpass_dyn_min_hz);
-    $('.pid_filter input[name="gyroLowpassDynMaxFrequency"]').val(FC.FILTER_CONFIG.gyro_lowpass_dyn_max_hz);
-    $('.pid_filter input[name="gyroLowpass2Frequency"]').val(FC.FILTER_CONFIG.gyro_lowpass2_hz);
-    $('.pid_filter select[name="gyroLowpassDynType').val(FC.FILTER_CONFIG.gyro_lowpass_type);
-    $('.pid_filter select[name="gyroLowpass2Type').val(FC.FILTER_CONFIG.gyro_lowpass2_type);
-    $('output[name="sliderGyroFilterMultiplier-number"]').val(this.sliderGyroFilterMultiplier);
+    this.updateLowpassValues();
+};
+
+TuningSliders.calculateLegacyDTermFilters = function() {
+    // calculate, set and display new values in forms based on slider position
+    FC.FILTER_CONFIG.dterm_lowpass_dyn_min_hz = Math.round(this.FILTER_DEFAULT.dterm_lowpass_dyn_min_hz * this.sliderDTermFilterMultiplier);
+    FC.FILTER_CONFIG.dterm_lowpass_dyn_max_hz = Math.round(this.FILTER_DEFAULT.dterm_lowpass_dyn_max_hz * this.sliderDTermFilterMultiplier);
+    FC.FILTER_CONFIG.dterm_lowpass2_hz = Math.round(this.FILTER_DEFAULT.dterm_lowpass2_hz * this.sliderDTermFilterMultiplier);
+    FC.FILTER_CONFIG.dterm_lowpass_type = this.FILTER_DEFAULT.dterm_lowpass_type;
+    FC.FILTER_CONFIG.dterm_lowpass2_type = this.FILTER_DEFAULT.dterm_lowpass2_type;
+
+    this.updateLowpassValues();
+};
+
+TuningSliders.calculateNewGyroFilters = function() {
+    // this is the main calculation for Gyro Filter slider, inputs are in form of slider position values
+    // values get set both into forms and their respective variables
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        FC.TUNING_SLIDERS.slider_gyro_filter = this.sliderGyroFilter;
+        //rounds slider values to nearies multiple of 5 and passes to the FW. Avoid dividing calc by (* x 100)/5 = 20
+        FC.TUNING_SLIDERS.slider_gyro_filter_multiplier = Math.round(this.sliderGyroFilterMultiplier * 20) * 5;
+        this.writeFilterSliders();
+    } else {
+        this.calculateLegacyGyroFilters();
+    }
 };
 
 TuningSliders.calculateNewDTermFilters = function() {
-    // calculate, set and display new values in forms based on slider position
-    FC.FILTER_CONFIG.dterm_lowpass_dyn_min_hz = Math.floor(this.FILTER_DEFAULT.dterm_lowpass_dyn_min_hz * this.sliderDTermFilterMultiplier);
-    FC.FILTER_CONFIG.dterm_lowpass_dyn_max_hz = Math.floor(this.FILTER_DEFAULT.dterm_lowpass_dyn_max_hz * this.sliderDTermFilterMultiplier);
-    FC.FILTER_CONFIG.dterm_lowpass2_hz = Math.floor(this.FILTER_DEFAULT.dterm_lowpass2_hz * this.sliderDTermFilterMultiplier);
-    FC.FILTER_CONFIG.dterm_lowpass_type = this.FILTER_DEFAULT.dterm_lowpass_type;
-    FC.FILTER_CONFIG.dterm_lowpass2_type = this.FILTER_DEFAULT.dterm_lowpass2_type;
+    // this is the main calculation for Gyro Filter slider, inputs are in form of slider position values
+    // values get set both into forms and their respective variables
+    if (semver.gte(FC.CONFIG.apiVersion, API_VERSION_1_44)) {
+        FC.TUNING_SLIDERS.slider_dterm_filter = this.sliderDTermFilter;
+        //rounds slider values to nearies multiple of 5 and passes to the FW. Avoid divide by ROUND[(* x 100)/5 = 20]
+        FC.TUNING_SLIDERS.slider_dterm_filter_multiplier = Math.round(this.sliderDTermFilterMultiplier * 20) * 5;
+        this.writeFilterSliders();
+    } else {
+        this.calculateLegacyDTermFilters();
+    }
+};
+
+TuningSliders.writeFilterSliders = function () {
+    MSP.promise(MSPCodes.MSP_SET_TUNING_SLIDERS, mspHelper.crunch(MSPCodes.MSP_SET_TUNING_SLIDERS))
+    .then(() => MSP.promise(MSPCodes.MSP_EEPROM_WRITE))
+    .then(() => MSP.promise(MSPCodes.MSP_FILTER_CONFIG))
+    .then(() => {
+        TuningSliders.updateLowpassValues();
+        if (this.FilterReset) {
+            this.FilterReset = false;
+            this.updateFilterSlidersDisplay();
+        }
+    });
+};
+
+TuningSliders.updateLowpassValues = function() {
+    $('.pid_filter input[name="gyroLowpassDynMinFrequency"]').val(FC.FILTER_CONFIG.gyro_lowpass_dyn_min_hz);
+    $('.pid_filter input[name="gyroLowpassDynMaxFrequency"]').val(FC.FILTER_CONFIG.gyro_lowpass_dyn_max_hz);
+    $('.pid_filter input[name="gyroLowpass2Frequency"]').val(FC.FILTER_CONFIG.gyro_lowpass2_hz);
+    $('.pid_filter select[name="gyroLowpassDynType]"').val(FC.FILTER_CONFIG.gyro_lowpass_type);
+    $('.pid_filter select[name="gyroLowpass2Type"]').val(FC.FILTER_CONFIG.gyro_lowpass2_type);
+    $('output[name="sliderGyroFilterMultiplier-number"]').val(this.sliderGyroFilterMultiplier);
 
     $('.pid_filter input[name="dtermLowpassDynMinFrequency"]').val(FC.FILTER_CONFIG.dterm_lowpass_dyn_min_hz);
     $('.pid_filter input[name="dtermLowpassDynMaxFrequency"]').val(FC.FILTER_CONFIG.dterm_lowpass_dyn_max_hz);
     $('.pid_filter input[name="dtermLowpass2Frequency"]').val(FC.FILTER_CONFIG.dterm_lowpass2_hz);
-    $('.pid_filter select[name="dtermLowpassDynType').val(FC.FILTER_CONFIG.dterm_lowpass_type);
-    $('.pid_filter select[name="dtermLowpass2Type').val(FC.FILTER_CONFIG.dterm_lowpass2_type);
+    $('.pid_filter select[name="dtermLowpassDynType"]').val(FC.FILTER_CONFIG.dterm_lowpass_type);
+    $('.pid_filter select[name="dtermLowpass2Type"]').val(FC.FILTER_CONFIG.dterm_lowpass2_type);
     $('output[name="sliderDTermFilterMultiplier-number"]').val(this.sliderDTermFilterMultiplier);
 };

@@ -163,7 +163,7 @@ TABS.auxiliary.initialize = function (callback) {
         $(rangeElement).find('.channel-slider').noUiSlider({
             start: rangeValues,
             behaviour: 'snap-drag',
-            margin: 50,
+            margin: 25,
             step: 25,
             connect: true,
             range: channel_range,
@@ -285,7 +285,7 @@ TABS.auxiliary.initialize = function (callback) {
                         continue; // invalid!
                     }
 
-                    addRangeToMode(newMode, modeRange.auxChannelIndex, modeRangeExtra.modeLogic, range)
+                    addRangeToMode(newMode, modeRange.auxChannelIndex, modeRangeExtra.modeLogic, range);
 
                 } else {
                     addLinkedToMode(newMode, modeRangeExtra.modeLogic, modeRangeExtra.linkedTo);
@@ -511,7 +511,7 @@ TABS.auxiliary.initialize = function (callback) {
 
             const fillPrevChannelsValues = function () {
                 prevChannelsValues = RC_channels.slice(0); //clone array
-            }
+            };
 
             if (!prevChannelsValues || RC_channels.length === 0) return fillPrevChannelsValues();
 

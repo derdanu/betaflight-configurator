@@ -1,8 +1,12 @@
-'use strict';
+import { i18n } from '../localization';
 
+<<<<<<< HEAD
 //App.clearCache();
 
 TABS.firmware_flasher = {
+=======
+const firmware_flasher = {
+>>>>>>> upstream/master
     releases: null,
     releaseChecker: new ReleaseChecker('firmware', 'https://api.github.com/repos/derdanu/betaflight-akramode/releases'),
     nightlyChecker: new ReleaseChecker('nightly', 'https://api.github.com/repos/derdanu/betaflight-akramode-nightly/releases'),
@@ -17,7 +21,7 @@ TABS.firmware_flasher = {
     developmentFirmwareLoaded: false, // Is the firmware to be flashed from the development branch?
 };
 
-TABS.firmware_flasher.initialize = function (callback) {
+firmware_flasher.initialize = function (callback) {
     var self = this;
 
     if (GUI.active_tab != 'firmware_flasher') {
@@ -402,7 +406,7 @@ TABS.firmware_flasher.initialize = function (callback) {
                 title: job.title,
                 loader: () => self.jenkinsLoader.loadBuilds(job.name, loadUnifiedBuilds)
             };
-        })
+        });
         var buildTypesToShow;
 
         var buildType_e = $('select[name="build_type"]');
@@ -798,7 +802,7 @@ TABS.firmware_flasher.initialize = function (callback) {
             if ($('input.erase_chip').is(':checked')) {
                 options.erase_chip = true;
 
-                eraseAll = true
+                eraseAll = true;
             }
             analytics.setFirmwareData(analytics.DATA.FIRMWARE_ERASE_ALL, eraseAll.toString());
 
@@ -1281,7 +1285,7 @@ TABS.firmware_flasher.initialize = function (callback) {
     });
 };
 
-TABS.firmware_flasher.cleanup = function (callback) {
+firmware_flasher.cleanup = function (callback) {
     PortHandler.flush_callbacks();
     FirmwareCache.unload();
 
@@ -1298,22 +1302,20 @@ TABS.firmware_flasher.cleanup = function (callback) {
     if (callback) callback();
 };
 
-TABS.firmware_flasher.enableFlashing = function (enabled) {
-    var self = this;
-
+firmware_flasher.enableFlashing = function (enabled) {
     if (enabled) {
         $('a.flash_firmware').removeClass('disabled');
     } else {
         $('a.flash_firmware').addClass('disabled');
     }
-}
+};
 
-TABS.firmware_flasher.FLASH_MESSAGE_TYPES = {NEUTRAL : 'NEUTRAL',
+firmware_flasher.FLASH_MESSAGE_TYPES = {NEUTRAL : 'NEUTRAL',
                                              VALID   : 'VALID',
                                              INVALID : 'INVALID',
                                              ACTION  : 'ACTION'};
 
-TABS.firmware_flasher.flashingMessage = function(message, type) {
+firmware_flasher.flashingMessage = function(message, type) {
     let self = this;
 
     let progressLabel_e = $('span.progressLabel');
@@ -1342,13 +1344,13 @@ TABS.firmware_flasher.flashingMessage = function(message, type) {
     return self;
 };
 
-TABS.firmware_flasher.flashProgress = function(value) {
+firmware_flasher.flashProgress = function(value) {
     $('.progress').val(value);
 
     return this;
 };
 
-TABS.firmware_flasher.injectTargetInfo = function (targetConfig, targetName, manufacturerId, commitInfo) {
+firmware_flasher.injectTargetInfo = function (targetConfig, targetName, manufacturerId, commitInfo) {
     const targetInfoLineRegex = /^# config: manufacturer_id: .*, board_name: .*, version: .*$, date: .*\n/gm;
 
     const config = targetConfig.replace(targetInfoLineRegex, '');
@@ -1358,4 +1360,10 @@ TABS.firmware_flasher.injectTargetInfo = function (targetConfig, targetName, man
     const lines = config.split('\n');
     lines.splice(1, 0, targetInfo);
     return lines.join('\n');
+};
+
+TABS.firmware_flasher = firmware_flasher;
+
+export {
+    firmware_flasher,
 };
