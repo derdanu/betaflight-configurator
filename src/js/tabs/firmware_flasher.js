@@ -1,12 +1,6 @@
 import { i18n } from '../localization';
 
-<<<<<<< HEAD
-//App.clearCache();
-
-TABS.firmware_flasher = {
-=======
 const firmware_flasher = {
->>>>>>> upstream/master
     releases: null,
     releaseChecker: new ReleaseChecker('firmware', 'https://api.github.com/repos/derdanu/betaflight-akramode/releases'),
     nightlyChecker: new ReleaseChecker('nightly', 'https://api.github.com/repos/derdanu/betaflight-akramode-nightly/releases'),
